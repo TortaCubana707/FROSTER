@@ -1,0 +1,21 @@
+# Solo se sube lo vigente del proyecto; versiones viejas, la animacion (553 MB), el grafo y
+# los archivos de contexto se quedan en la computadora.
+/*
+!/.gitignore
+!/README.md
+!/FROSTER_Guia_Conexiones.md
+!/firmware/
+/firmware/*
+!/firmware/FROSTER_Control/
+!/diagramas/
+!/dashboard/
+!/evidencias/
+!/herramientas/
+/herramientas/*
+!/herramientas/actualizar_grafo.sh
+!/herramientas/nombrar_comunidades.py
+
+# Credenciales y compilados
+secretos.h
+build/
+dashboard/index_v1_respaldo.html

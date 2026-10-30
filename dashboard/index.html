@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FROSTER · Tablero</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --fondo:#0d1117; --tarjeta:#161b22; --borde:#30363d; --texto:#e6edf3; --tenue:#8b949e;
+    --frio:#58a6ff; --verde:#3fb950; --ambar:#d29922; --rojo:#f85149; --morado:#bc8cff;
+    --apagado:#21262d;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --fondo:#f6f8fa; --tarjeta:#ffffff; --borde:#d0d7de; --texto:#1f2328; --tenue:#59636e;
+      --frio:#0969da; --verde:#1a7f37; --ambar:#9a6700; --rojo:#cf222e; --morado:#8250df;
+      --apagado:#eaeef2;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--texto);
+       font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:1180px;margin:0 auto;padding:20px 16px 40px}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin-bottom:16px}
+  h1{margin:0;font-size:26px;letter-spacing:.5px}
+  h1 span{color:var(--frio)}
+  .estado-vivo{padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;
+               border:1px solid var(--borde);color:var(--tenue)}
+  .estado-vivo.vivo{color:var(--verde);border-color:var(--verde)}
+  .estado-vivo.viejo{color:var(--ambar);border-color:var(--ambar)}
+  .estado-vivo.demo{color:var(--morado);border-color:var(--morado)}
+  .actualizado{color:var(--tenue);font-size:13px}
+  header .der{margin-left:auto}
+  button{font:inherit;color:var(--texto);background:var(--tarjeta);border:1px solid var(--borde);
+         border-radius:8px;padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--frio)}
+  button.activo{background:var(--frio);border-color:var(--frio);color:#fff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .alerta{display:none;margin-bottom:14px;padding:12px 14px;border-radius:10px;font-weight:700;
+          background:color-mix(in srgb,var(--rojo) 14%,transparent);border:1px solid var(--rojo);color:var(--rojo)}
+  .rejilla{display:grid;gap:12px;grid-template-columns:repeat(4,1fr)}
+  @media (max-width:900px){.rejilla{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:520px){.rejilla{grid-template-columns:1fr}}
+  .tarjeta{background:var(--tarjeta);border:1px solid var(--borde);border-radius:12px;padding:14px}
+  .etiqueta{color:var(--tenue);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+  .valor{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px}
+  .sub{color:var(--tenue);font-size:13px;margin-top:2px}
+  .niveles{display:flex;gap:6px;margin-top:10px}
+  .niveles div{flex:1;height:10px;border-radius:5px;background:var(--apagado)}
+  .niveles div.on{background:var(--frio)}
+  .objetivo{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .objetivo .valor{margin:0;min-width:90px;text-align:center}
+  .equipos{display:grid;gap:12px;grid-template-columns:repeat(3,1fr);margin-top:12px}
+  @media (max-width:700px){.equipos{grid-template-columns:1fr}}
+  .equipo{display:flex;align-items:center;gap:10px}
+  .foco{width:14px;height:14px;border-radius:50%;background:var(--apagado);border:1px solid var(--borde);flex:none}
+  .foco.on{background:var(--verde);border-color:var(--verde);box-shadow:0 0 10px var(--verde)}
+  .controles{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .grafica{margin-top:12px;height:330px}
+  .grafica canvas{width:100%!important}
+  .pie{color:var(--tenue);font-size:12px;margin-top:16px;text-align:center}
+  #acceso{max-width:380px;margin:12vh auto 0}
+  #acceso input{width:100%;margin-top:6px;padding:9px 10px;border-radius:8px;border:1px solid var(--borde);
+                background:var(--fondo);color:var(--texto);font:inherit}
+  #acceso label{display:block;margin-top:12px;color:var(--tenue);font-size:13px}
+  #acceso button{width:100%;margin-top:16px;padding:10px;background:var(--frio);border-color:var(--frio);color:#fff;font-weight:700}
+  #errorAcceso{color:var(--rojo);font-size:13px;margin-top:10px;min-height:18px}
+  #panel{display:none}
+</style>
+</head>
+<body>
+<main>
+
+<!-- ============================================================ acceso -->
+<section id="acceso" class="tarjeta">
+  <h1>FROST<span>ER</span></h1>
+  <p class="sub">Tablero en vivo. Entra con la cuenta de Firebase del proyecto.
+     La contraseña no se guarda en este archivo ni en el navegador.</p>
+  <label>Correo<input id="correo" type="email" autocomplete="username" value="esp32@correo.com"></label>
+  <label>Contraseña<input id="clave" type="password" autocomplete="current-password"></label>
+  <button id="entrar">Entrar</button>
+  <div id="errorAcceso"></div>
+</section>
+
+<!-- ============================================================ panel -->
+<section id="panel">
+  <header>
+    <h1>FROST<span>ER</span> · tablero</h1>
+    <span id="vivo" class="estado-vivo">CONECTANDO</span>
+    <span id="actualizado" class="actualizado"></span>
+    <span class="der"><button id="salir">Salir</button></span>
+  </header>
+
+  <div id="alerta" class="alerta"></div>
+
+  <div class="rejilla">
+    <div class="tarjeta">
+      <div class="etiqueta">Nivel</div>
+      <div class="valor" id="nivel">--</div>
+      <div class="sub" id="nivelTexto">&nbsp;</div>
+      <div class="niveles"><div id="n1"></div><div id="n2"></div><div id="n3"></div></div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Cámara (DHT22)</div>
+      <div class="valor" id="camara">--</div>
+      <div class="sub" id="tendencia">&nbsp;</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Objetivo</div>
+      <div class="objetivo">
+        <button id="objMenos" title="Bajar 0.5 °C">−</button>
+        <div class="valor" id="objetivo">--</div>
+        <button id="objMas" title="Subir 0.5 °C">+</button>
+      </div>
+      <div class="sub" id="objetivoNota">Se guarda en Firebase y el ESP32 lo toma en ~3 s</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Bloque frío (DS18B20)</div>
+      <div class="valor" id="bloque">--</div>
+      <div class="sub" id="rocio">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="equipos">
+    <div class="tarjeta">
+      <div class="etiqueta">Equipos</div>
+      <div class="equipo" style="margin-top:8px"><span class="foco" id="fA"></span>Celda A</div>
+      <div class="equipo" style="margin-top:6px"><span class="foco" id="fB"></span>Celda B</div>
+      <div class="equipo" style="margin-top:6px"><span class="foco" id="fBomba"></span>Bomba y ventiladores</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Modo</div>
+      <div class="controles">
+        <button data-modo="auto">Automático</button>
+        <button data-modo="manual">Manual</button>
+        <button data-modo="off">Apagado</button>
+      </div>
+      <div class="controles">
+        <button id="manualA" disabled>Celda A</button>
+        <button id="manualB" disabled>Celda B</button>
+        <button id="carga">Aviso de carga alta</button>
+      </div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Por qué decidió así</div>
+      <div class="valor" style="font-size:20px" id="motivo">--</div>
+      <div class="sub" id="humedad">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="tarjeta grafica">
+    <canvas id="grafica"></canvas>
+  </div>
+
+  <div class="pie">ESP32 → Wi-Fi → Firebase (tarjeta/refrigeracion) → este tablero.
+    La gráfica guarda los últimos 30 min mientras la página esté abierta.</div>
+</section>
+</main>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB2vY8GQr4ns5sgYgJjWbIARrT4gp8ln3E",
+  authDomain: "sqliteemi.firebaseapp.com",
+  databaseURL: "https://sqliteemi-default-rtdb.firebaseio.com",
+  projectId: "sqliteemi"
+};
+const RAIZ = "tarjeta/refrigeracion";
+const LATIDO_MAXIMO_MS = 15000;     // sin cambio de uptime en 15 s = el ESP32 no publica
+const VENTANA_MS = 30 * 60 * 1000;
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+const $ = id => document.getElementById(id);
+const num = v => (typeof v === "number" ? v : (v == null || v === "" ? NaN : Number(v)));
+const grados = v => Number.isFinite(v) ? v.toFixed(1) + " °C" : "--";
+
+let lecturas = {}, estado = {}, config = {};
+let uptimeAnterior = null, ultimoLatido = 0;
+let escribirConfig = () => {};
+
+// ------------------------------------------------------------------ gráfica
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Se crea al mostrar el panel: con el panel oculto el lienzo mide 0 y Chart.js no dibuja
+let grafica = null;
+const crearGrafica = () => grafica || (grafica = new Chart($("grafica"), {
+  type: "line",
+  data: { datasets: [
+    { label: "Cámara",     borderColor: css("--rojo"),  data: [], borderWidth: 2 },
+    { label: "Bloque frío", borderColor: css("--frio"), data: [], borderWidth: 2 },
+    { label: "Objetivo",   borderColor: css("--verde"), data: [], borderWidth: 2, borderDash: [6, 4], stepped: true },
+    { label: "Punto de rocío", borderColor: css("--ambar"), data: [], borderWidth: 1, borderDash: [2, 3] }
+  ]},
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+    elements: { point: { radius: 0 }, line: { tension: .25 } },
+    interaction: { intersect: false, mode: "index" },
+    scales: {
+      x: { type: "linear", grid: { color: css("--borde") },
+           ticks: { color: css("--tenue"), maxTicksLimit: 7,
+                    callback: v => new Date(v).toLocaleTimeString("es-MX", {hour: "2-digit", minute: "2-digit"}) } },
+      y: { grid: { color: css("--borde") }, ticks: { color: css("--tenue"), callback: v => v + "°" } }
+    },
+    plugins: {
+      legend: { labels: { color: css("--tenue"), boxWidth: 14 } },
+      tooltip: { callbacks: { title: i => new Date(i[0].parsed.x).toLocaleTimeString("es-MX"),
+                              label: i => `${i.dataset.label}: ${i.parsed.y.toFixed(1)} °C` } }
+    }
+  }
+}));
+
+function agregarPunto() {
+  if (!grafica) return;
+  const t = Date.now();
+  const valores = [num(lecturas.ambiente), num(lecturas.placa_fria), num(estado.setpoint), num(lecturas.punto_rocio)];
+  grafica.data.datasets.forEach((d, i) => {
+    if (Number.isFinite(valores[i])) d.data.push({ x: t, y: valores[i] });
+    while (d.data.length && d.data[0].x < t - VENTANA_MS) d.data.shift();
+  });
+  grafica.update("none");
+}
+
+// ------------------------------------------------------------------ pintar
+const NIVEL_TEXTO = { 1: "Solo bomba y ventiladores", 2: "Una celda", 3: "Las dos celdas" };
+
+function pintar() {
+  const nivel = num(estado.nivel) || 1;
+  $("nivel").textContent = "N" + nivel;
+  $("nivelTexto").textContent = NIVEL_TEXTO[nivel] || "";
+  ["n1", "n2", "n3"].forEach((id, i) => $(id).classList.toggle("on", i < nivel));
+
+  $("camara").textContent = grados(num(lecturas.ambiente));
+  const p = num(lecturas.pendiente), pred = num(lecturas.prediccion);
+  $("tendencia").textContent = Number.isFinite(p)
+    ? `${p > 0.15 ? "↑ subiendo" : p < -0.15 ? "↓ bajando" : "→ estable"} (${p >= 0 ? "+" : ""}${p.toFixed(2)} °C/min)`
+      + (Number.isFinite(pred) ? ` · en 2 min: ${pred.toFixed(1)} °C` : "")
+    : " ";
+
+  $("objetivo").textContent = grados(num(estado.setpoint));
+
+  const blq = num(lecturas.placa_fria), roc = num(lecturas.punto_rocio);
+  $("bloque").textContent = grados(blq);
+  $("rocio").textContent = Number.isFinite(blq) && Number.isFinite(roc)
+    ? (blq < roc ? `Bajo el rocío (${roc.toFixed(1)} °C): escurre agua a la bandeja`
+                 : `${(blq - roc).toFixed(1)} °C sobre el rocío`)
+    : " ";
+
+  $("fA").classList.toggle("on", !!estado.celda_a);
+  $("fB").classList.toggle("on", !!estado.celda_b);
+  $("fBomba").classList.toggle("on", !!estado.bomba);
+
+  const modo = estado.modo || "auto";
+  document.querySelectorAll("[data-modo]").forEach(b => b.classList.toggle("activo", b.dataset.modo === modo));
+  const manual = modo === "manual";
+  $("manualA").disabled = $("manualB").disabled = !manual;
+  $("manualA").classList.toggle("activo", manual && !!config.manual_a);
+  $("manualB").classList.toggle("activo", manual && !!config.manual_b);
+  $("carga").classList.toggle("activo", !!estado.carga_alta);
+
+  $("motivo").textContent = estado.motivo || "--";
+  const h = num(lecturas.humedad);
+  $("humedad").textContent = Number.isFinite(h) ? `Humedad de la cámara: ${h.toFixed(0)} %` : " ";
+
+  const alerta = estado.alerta || "";
+  $("alerta").style.display = alerta ? "block" : "none";
+  $("alerta").textContent = alerta ? "⚠ " + alerta : "";
+  pintarVivo();
+}
+
+function pintarVivo() {
+  const el = $("vivo");
+  if (DEMO) { el.textContent = "DEMO · datos simulados"; el.className = "estado-vivo demo"; return; }
+  const vivo = ultimoLatido && Date.now() - ultimoLatido <= LATIDO_MAXIMO_MS;
+  el.textContent = vivo ? "EN VIVO" : "SIN DATOS DEL ESP32";
+  el.className = "estado-vivo " + (vivo ? "vivo" : "viejo");
+  $("actualizado").textContent = ultimoLatido
+    ? "último dato: hace " + Math.round((Date.now() - ultimoLatido) / 1000) + " s"
+    : "mostrando lo último guardado en Firebase";
+}
+setInterval(pintarVivo, 1000);
+
+// ------------------------------------------------------------------ controles
+function cambiarObjetivo(delta) {
+  const actual = num(estado.setpoint);
+  const nuevo = Math.min(40, Math.max(15, Math.round(((Number.isFinite(actual) ? actual : 28) + delta) * 2) / 2));
+  escribirConfig({ setpoint: nuevo });
+}
+$("objMenos").onclick = () => cambiarObjetivo(-0.5);
+$("objMas").onclick = () => cambiarObjetivo(+0.5);
+document.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => escribirConfig({ modo: b.dataset.modo }));
+$("manualA").onclick = () => escribirConfig({ manual_a: !config.manual_a });
+$("manualB").onclick = () => escribirConfig({ manual_b: !config.manual_b });
+$("carga").onclick = () => escribirConfig({ carga_alta: !estado.carga_alta });
+
+// ------------------------------------------------------------------ Firebase
+function arrancarFirebase() {
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  escribirConfig = cambios => db.ref(`${RAIZ}/config`).update(cambios)
+    .catch(e => alert("No se pudo guardar: " + e.message));
+
+  firebase.auth().onAuthStateChanged(usuario => {
+    $("acceso").style.display = usuario ? "none" : "block";
+    $("panel").style.display = usuario ? "block" : "none";
+    if (!usuario) return;
+    crearGrafica();
+    // Los listeners van DESPUÉS del login: antes, la base los rechaza (Permission denied)
+    db.ref(`${RAIZ}/lecturas`).on("value", s => { lecturas = s.val() || {}; pintar(); agregarPunto(); });
+    db.ref(`${RAIZ}/estado`).on("value", s => {
+      estado = s.val() || {};
+      const up = num(estado.uptime_s);
+      if (uptimeAnterior !== null && Number.isFinite(up) && up !== uptimeAnterior) ultimoLatido = Date.now();
+      uptimeAnterior = up;
+      pintar();
+    });
+    db.ref(`${RAIZ}/config`).on("value", s => { config = s.val() || {}; pintar(); });
+  });
+
+  $("entrar").onclick = () => {
+    $("errorAcceso").textContent = "";
+    firebase.auth().signInWithEmailAndPassword($("correo").value.trim(), $("clave").value)
+      .catch(e => { $("errorAcceso").textContent = "No se pudo entrar: " + e.message; });
+  };
+  $("clave").addEventListener("keydown", e => { if (e.key === "Enter") $("entrar").click(); });
+  $("salir").onclick = () => firebase.auth().signOut();
+}
+
+// ------------------------------------------------------------------ demo (?demo)
+// Datos simulados para ver el diseño sin conectarse. Se marca "DEMO" arriba.
+function arrancarDemo() {
+  $("acceso").style.display = "none";
+  $("panel").style.display = "block";
+  $("salir").style.display = "none";
+  crearGrafica();
+  let cam = 28.3, blq = 11, up = 0, t = 0;   // siguen donde termina el historial
+  estado = { nivel: 1, setpoint: 28, modo: "auto", motivo: "Reposo", alerta: "", bomba: true };
+  escribirConfig = c => { Object.assign(estado, c.setpoint ? { setpoint: c.setpoint } : {},
+                                        c.modo ? { modo: c.modo } : {},
+                                        "carga_alta" in c ? { carga_alta: c.carga_alta } : {}); pintar(); };
+  // historial de 20 min para que la gráfica no empiece vacía
+  const ahora = Date.now();
+  for (let i = 400; i > 0; i--) {
+    const x = ahora - i * 3000, fase = (400 - i) / 400;
+    grafica.data.datasets[0].data.push({ x, y: 30.5 - 2.2 * fase + Math.sin(i / 9) * 0.1 });
+    grafica.data.datasets[1].data.push({ x, y: 24 - 13 * Math.min(1, fase * 1.6) });
+    grafica.data.datasets[2].data.push({ x, y: 28 });
+    grafica.data.datasets[3].data.push({ x, y: 19.2 });
+  }
+  const paso = () => {
+    t++; up += 3;
+    const celdas = cam > estado.setpoint + 2.5 ? 2 : cam > estado.setpoint + 0.5 ? 1 : 0;
+    cam += (celdas ? -0.04 * celdas : 0.03) + (Math.random() - .5) * 0.04;
+    blq += ((celdas ? 24 - 8 * celdas - 4 : 23) - blq) * 0.05;
+    estado = Object.assign(estado, { nivel: celdas + 1, celda_a: celdas >= 1, celda_b: celdas >= 2,
+      motivo: celdas === 0 ? "Reposo" : "Sobre objetivo", uptime_s: up });
+    lecturas = { ambiente: cam, placa_fria: blq, humedad: 54, punto_rocio: 19.2,
+                 pendiente: celdas ? -0.4 : 0.2, prediccion: cam + (celdas ? -0.8 : 0.4) };
+    pintar(); agregarPunto();
+  };
+  paso();
+  setInterval(paso, 1500);
+}
+
+if (DEMO) arrancarDemo(); else arrancarFirebase();
+</script>
+</body>
+</html>
