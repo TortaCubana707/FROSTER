@@ -1,0 +1,5 @@
+A|¿Y si tu computadora tuviera su propio aire acondicionado inteligente? Te presento a FROSTER.
+B|Un foco amarillo calienta la cámara de pruebas. El ESP32 mide la temperatura y decide: en nivel uno solo trabajan la bomba y los ventiladores. En nivel dos entra una celda Peltier. Y si sigue subiendo, ¡nivel tres, con las dos! El lado caliente se enfría con agua con hielo.
+C|Y este es el prototipo real. La fuente de doce volts alimenta dos reductores XL4016 y tres módulos MOSFET, que el ESP32 enciende desde sus pines. El LED RGB cambia de color según el nivel, y el buzzer avisa con sonidos.
+D|La pantalla LCD muestra la señal del Wi-Fi y la IP de la placa, y la OLED el nivel, la temperatura y su gráfica. Todo se publica en Firebase en tiempo real.
+E|FROSTER: frío inteligente, controlado desde la nube.

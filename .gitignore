@@ -11,6 +11,8 @@
 !/dashboard/
 !/evidencias/
 !/herramientas/
+!/video_e1/
+/video_e1/cuadros/
 /herramientas/*
 !/herramientas/actualizar_grafo.sh
 !/herramientas/nombrar_comunidades.py

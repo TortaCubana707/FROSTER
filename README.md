@@ -7,7 +7,8 @@ un foco incandescente amarillo simula el calor de una computadora y el módulo t
 > Estado al 29 oct 2026: firmware cargado en el ESP32 y probado con el hardware real. Se conecta
 > al Wi-Fi, publica en Firebase, la LCD, la OLED y el LED RGB funcionan, y en modo manual las
 > celdas enfriaron la cámara 0.8 °C en 2.5 min. En la computadora pasan 52 verificaciones de
-> control y las de LED y buzzer. Fotos del prototipo en [evidencias/E1](evidencias/E1).
+> control y las de LED y buzzer. Fotos del prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
+> [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
 
 La guía para armarlo paso a paso está en
 [FROSTER_Guia_Conexiones.md](FROSTER_Guia_Conexiones.md).
@@ -211,6 +212,7 @@ se quedan en la computadora.
 | `diagramas/FROSTER_conexiones_control.png` y `_potencia.png` | **Vigentes**: diagramas de conexión (los `.excalidraw` se editan en excalidraw.com) |
 | `diagramas/generar_diagramas.py` | **Vigente**: regenera los dos diagramas |
 | `dashboard/index.html` y `abrir_tablero.sh` | **Vigente**: tablero en vivo |
+| `video_e1/` (`gen_diapositivas.py`, `armar_video_e1.py`, `guion.txt`) | **Vigente**: arma el video de la E1; la voz es es-MX-DaliaNeural (edge-tts) |
 | `herramientas/actualizar_grafo.sh` | **Vigente**: regenera el grafo de graphify |
 | `blender/` (modelo, animación y scripts) | Vigente, aunque muestra la versión con focos de 15 y 25 W |
 | `FROSTER_Esquema_Corregido.md` | Parcialmente superado (ver su nota inicial) |
