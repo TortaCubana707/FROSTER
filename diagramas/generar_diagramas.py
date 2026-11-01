@@ -183,10 +183,12 @@ def control():
     d16 = fila("D16", 1050, "izq")
     d4 = fila("D4", 1180, "izq")
 
-    # Sin buzzer: el sonido es la voz de FROSTER en la app (asistente con IA)
-    c.caja(180, 200, 280, 116, OPCIONAL, dashed=True)
-    c.texto(194, 212, "D23 libre", 17, OSCURO)
-    c.texto(194, 240, "El sonido ahora es la voz\nde FROSTER en la app:\nresponde y avisa alertas.", 13, CUERPO)
+    # Buzzer pasivo de 3 pines: la señal audible del circuito
+    bz = componente(180, 205, 280, 100, SALIDA, "Buzzer pasivo\n3 pines",
+                    [("GND", d23["G"][1]), ("VCC", d23["V"][1]), ("S", d23["S"][1])])
+    cable(bz["GND"], d23["G"], NEGRO)
+    cable(bz["VCC"], d23["V"], ROJO)
+    cable(bz["S"], d23["S"], AZUL)
 
     # LCD sola en el bus I2C principal (21 = SDA, 22 = SCL)
     lcd = componente(180, 340, 280, 200, SALIDA, "Pantalla LCD\n16×2 I2C",
@@ -197,12 +199,12 @@ def control():
     cable(lcd["SDA"], d21["S"], AZUL)
     c.texto(BX - 16, 332, "G y V del D22: sin usar", 13, CUERPO, "right")
 
-    # Solo un DS18B20: arriba, en el bloque frío (D18). El agua ya no lleva termómetro.
+    # Solo un DS18B20: dentro del bloque frío (D18). El agua ya no lleva termómetro.
     c.caja(180, 765, 280, 100, OPCIONAL, dashed=True)
     c.texto(194, 777, "D5 libre", 17, OSCURO)
     c.texto(194, 803, "Sin termómetro en el agua: la\nfalta de hielo se deduce del\nbloque frío.", 13, CUERPO)
-    for pines_fila, y, titulo in ((d18, 615, "Termómetro\nbloque frío (arriba)"),
-                                  (d4, 1155, "DHT22\ncámara (dentro)")):
+    for pines_fila, y, titulo in ((d18, 615, "Termómetro\ndentro del bloque frío"),
+                                  (d4, 1155, "DHT22\ndentro de la caja")):
         g, v, s = pines_fila["G"][1], pines_fila["V"][1], pines_fila["S"][1]
         etq = ("GND", "VCC", "DATA") if "DHT" in titulo else ("GND", "VCC", "DAT")
         comp = componente(180, y, 280, 100, ENTRADA, titulo, [(etq[0], g), (etq[1], v), (etq[2], s)])

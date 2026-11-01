@@ -59,7 +59,7 @@ Cada pin tiene una fila de tres patitas:
 
 Cada uno entra directo en su fila.
 
-### Termómetro — Bloque frío (arriba, para el congelamiento)
+### Termómetro — Dentro del bloque frío (para el congelamiento)
 
 | Pin del adaptador | Placa |
 |---|---|
@@ -142,11 +142,19 @@ Si es de ánodo común, en el código se cambia `LED_ANODO_COMUN` a `1`.
 
 ---
 
-## Parte 5 — Sonido: la voz de FROSTER
+## Parte 5 — Buzzer pasivo de 3 pines
 
-Ya no hay buzzer: el pin **D23 queda libre**. Las señales audibles las da la app: en la pantalla
-de refrigeración, el botón **"Hablar con FROSTER"** abre un asistente que contesta en voz alta lo
-que le preguntes (con IA de Groq) y avisa las alertas en voz alta.
+| Pin del buzzer | Placa |
+|---|---|
+| S (señal) | **S** del D23 |
+| VCC o + | **V** del D23 |
+| GND o − | **G** del D23 |
+
+Al encender la placa debe sonar una melodía de 3 notas. Si zumba o se calienta en silencio, en el
+código se cambia `BUZZER_ACTIVO_BAJO` a `1`.
+
+Además, en la app, el botón **"Hablar con FROSTER"** abre un asistente que contesta en voz alta y
+avisa las alertas.
 
 Aquí termina todo lo que se programa.
 

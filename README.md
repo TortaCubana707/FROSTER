@@ -5,10 +5,14 @@ telemetría en Firebase, tablero web y app Android. Se prueba en una **cámara d
 un foco incandescente amarillo simula el calor de una computadora y el módulo tiene que sacarlo.
 
 > Estado al 29 oct 2026: firmware cargado en el ESP32 y probado con el hardware real. Se conecta
-> al Wi-Fi, publica en Firebase, la LCD, la OLED y el LED RGB funcionan, y en modo manual las
+> al Wi-Fi, publica en Firebase, la LCD, la OLED y el LED RGB funcionan (al buzzer le falta terminar
+> sus conexiones), y en modo manual las
 > celdas enfriaron la cámara 0.8 °C en 2.5 min. En la computadora pasan 52 verificaciones de
 > control y las de LED y buzzer. Fotos del prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
 > [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
+
+**Equipo:** Emilio Garduño Servin, Kevin Alvarez De Jesus, Valeria Monserrat Benitez Alvarez y
+Jesus Emmanuel Garcia Rodriguez.
 
 La guía para armarlo paso a paso está en
 [FROSTER_Guia_Conexiones.md](FROSTER_Guia_Conexiones.md).
@@ -67,6 +71,7 @@ celdas y ensancha solo su banda si detecta que está ciclando.
 | Pantalla LCD 16×2 I2C | 1 | El módulo, el uso y la red: bloque, agua, rocío, horas de uso, WiFi |
 | Pantalla OLED 0.96" I2C (SSD1306) | 1 | Lo que decide el control: nivel, cámara, celdas, gráfica y motivo |
 | LED RGB + 3 resistencias de 220 Ω | 1 | Color por estado |
+| Buzzer pasivo de 3 pines | 1 | Un sonido por evento |
 | Diodo 1N4007 | 1 | Protección de la bomba |
 | Power bank o cargador USB | 1 | Alimenta el ESP32 por el USB-C de la base |
 
@@ -95,16 +100,16 @@ así que la celda va directo a OUT+ / OUT− para que funcione el límite de 3 A
 
 | GPIO | Va a |
 |---|---|
-| 4 | DHT22 |
+| 4 | DHT22, dentro de la caja |
 | 5 | Libre (no hay termómetro en el agua) |
-| 18 | DS18B20 del bloque frío, arriba |
+| 18 | DS18B20 dentro del bloque frío |
 | 21 / 22 | Pantalla LCD (SDA / SCL) |
 | 16 / 17 | Pantalla OLED, en su propio bus I2C (SDA / SCL) |
 | 25 | D4184 #1 — celda A |
 | 26 | D4184 #2 — celda B |
 | 27 | D4184 #3 — bomba y ventiladores |
 | 32 / 33 / 13 | LED RGB (R / G / B) |
-| 23 | Libre (antes buzzer) |
+| 23 | Buzzer pasivo de 3 pines |
 
 **Sobre el jumper en 5V:** los sensores quedan alimentados a 5 V y su cable de datos llega al
 ESP32 a 5 V, aunque sus pines están especificados hasta 3.6 V (la base no convierte niveles).
@@ -143,9 +148,6 @@ la voz o por escrito y contesta en voz alta con voz propia (español de México,
   lo dice en vez de presentar datos viejos como actuales.
 - La clave va en `local.properties` (`GROQ_API_KEY`), que no se sube a git. Código en
   `app/src/main/java/com/example/crudsqlite1/froster/`, 26 pruebas JUnit.
-
-El buzzer se perdió; el sonido del sistema es esta voz. El firmware conserva el código del buzzer
-por si se repone (GPIO 23).
 
 ## Por qué 3 A por celda
 
