@@ -261,11 +261,11 @@ int main() {
     VERIFICA(r.violDwell == 0 && r.violSeguridad == 0, "violo tiempos o seguridad"); }
 
   // ---------------------------------------------------------------- 13
-  seccion("13. Fuga junto a la bomba: se confirma en 4 s, apaga todo y vuelve 30 s despues de secarse");
+  seccion("13. Fuga junto a la bomba: se confirma en 0.3 s, apaga todo y vuelve 30 s despues de secarse");
   { FiltroFuga f = {};
     VERIFICA(!filtrarFuga(f, NAN, 0), "sin sensor marco fuga");
-    VERIFICA(!filtrarFuga(f, 90, 1000) && !filtrarFuga(f, 90, 4000), "una gota de 3 s ya marco fuga");
-    VERIFICA(filtrarFuga(f, 90, 5100), "no confirmo la fuga a los 4 s");
+    VERIFICA(!filtrarFuga(f, 90, 1000) && !filtrarFuga(f, 90, 1250), "un salpicon de 0.25 s ya marco fuga");
+    VERIFICA(filtrarFuga(f, 90, 1300), "no confirmo la fuga a los 0.3 s");
     VERIFICA(filtrarFuga(f, 35, 6000), "solto la fuga con 35 %%: dentro de la histeresis");
     VERIFICA(filtrarFuga(f, 10, 7000) && filtrarFuga(f, 10, 30000), "solto la fuga antes de 30 s seca");
     VERIFICA(!filtrarFuga(f, 10, 37100), "no solto la fuga tras 30 s seca"); }

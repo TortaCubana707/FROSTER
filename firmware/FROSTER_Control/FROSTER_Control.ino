@@ -181,12 +181,12 @@ struct Nota { uint16_t hz, ms; };            // hz 0 = silencio; ms 0 = fin
 #define PROXY_ESPERA_MS    180000UL
 #define PROXY_MARGEN_C      2.0f
 #define PROXY_REARME_MS    300000UL   // 5 min apagadas por cada corte (maximo 30 min)
-/* Fuga: humedad junto a la bomba. Se confirma 4 s seguida y se suelta tras 30 s ya
-   seca, para que una gota suelta no apague todo ni un sensor que se seca lo prenda y
-   apague una y otra vez. */
+/* Fuga: humedad junto a la bomba. Se lee cada 50 ms y basta con 0.3 s seguidos de
+   lecturas mojadas para cortar: la bomba saca mucha agua de golpe. Se suelta tras 30 s
+   ya seca, para que un sensor que se va secando no prenda y apague la bomba una y otra vez. */
 #define FUGA_UMBRAL_PCT    40.0f
 #define FUGA_HISTERESIS    10.0f
-#define FUGA_CONFIRMA_MS    4000UL
+#define FUGA_CONFIRMA_MS     300UL
 #define FUGA_LIBERA_MS     30000UL
 
 enum Modo : uint8_t { MODO_AUTO = 0, MODO_MANUAL = 1, MODO_APAGADO = 2 };
@@ -495,6 +495,7 @@ Entradas gOrdenes = { NAN, NAN, NAN, 28.0f, MODO_AUTO, false, false, false, SENS
 Salidas  gSalidas = {};
 float gCam = NAN, gTubo = NAN, gAgua = NAN, gHum = NAN, gRocio = NAN;
 float gFugaPct = NAN;                 // humedad junto a la bomba, 0 a 100 % (NAN sin sensor)
+volatile bool gFuga = false;          // fuga confirmada: la lee la tarea de control
 int   gFugaRaw = -1;                  // lectura cruda del ADC, para calibrar (-1 sin sensor)
 uint32_t gMsOnA = 0, gMsOnB = 0;      // tiempo encendida de cada celda (para la LCD)
 Control  ctl;      // solo lo toca la tarea de control
@@ -576,6 +577,7 @@ void loop() {
   uint32_t ahora = millis();
 
   wm.process();                                   // atiende el portal si esta abierto
+  vigilarFuga();                                  // cada 50 ms; corta la bomba al instante
   vigilarWiFi();                                  // reconexion autonoma
   if (WiFi.status() == WL_CONNECTED && !firebaseIniciado) iniciarFirebase();
 

@@ -6,7 +6,7 @@ un foco incandescente amarillo simula el calor de una computadora y el módulo t
 
 > Estado al 8 nov 2026: firmware actual cargado y probado en la placa. Se conecta solo al Wi-Fi,
 > publica en Firebase, la LCD, la OLED, el LED RGB y el buzzer funcionan, los ventiladores cambian de
-> velocidad con el nivel (PWM) y el sensor de fuga apaga todo a los 4 s de mojarse y lo reanuda al
+> velocidad con el nivel (PWM) y el sensor de fuga apaga todo al mojarse (0.3 s) y lo reanuda al
 > secarse. En la computadora pasan 63 verificaciones de control y las de LED y buzzer. Fotos del
 > prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
 > [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
@@ -66,7 +66,7 @@ detener nada y cuenta las caídas (`estado/caidas_wifi`). Cada sensor tiene su a
 | Bloque frío bajo 0.5 °C | Apaga las celdas; vuelven al pasar de 6 °C |
 | Celda encendida 3 min y el bloque no está 2 °C más frío que la cámara | Se acabó el hielo o se paró la bomba (deducido, sin sensor de agua): apaga las celdas; reintenta tras 5 min por cada corte |
 | Un sensor sin lectura 10 s | Apaga las celdas |
-| Humedad junto a la bomba ≥ 40 % durante 4 s | Fuga: apaga celdas, bomba y ventiladores; vuelve 30 s después de secarse |
+| Humedad junto a la bomba ≥ 40 % durante 0.3 s (se lee cada 50 ms) | Fuga: corta al instante celdas, bomba y ventiladores; vuelve 30 s después de secarse |
 | Arranque de la placa | 60 s de espera; la bomba arranca 15 s antes que las celdas y sigue 60 s después |
 
 ---
