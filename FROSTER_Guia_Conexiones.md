@@ -156,6 +156,23 @@ código se cambia `BUZZER_ACTIVO_BAJO` a `1`.
 Además, en la app, el botón **"Hablar con FROSTER"** abre un asistente que contesta en voz alta y
 avisa las alertas.
 
+### Sensor de fuga (humedad junto a la bomba)
+
+Es un módulo de 4 pines, como el de humedad de suelo o el de lluvia. La placa con las pistas va
+**debajo de la bomba y de las uniones de las mangueras**, donde caería una fuga.
+
+| Pin del sensor | Placa |
+|---|---|
+| AO | **S** del D34 |
+| GND | **G** del D34 |
+| VCC | Pin **3V3** de la placa, **no** la fila V |
+| DO | Sin conectar |
+
+Va a 3.3 V porque su salida AO llega hasta el voltaje con el que se alimenta, y el ESP32 solo lee
+hasta 3.3 V en ese pin. Al conectarlo, en el código se cambia `SENSOR_FUGA` a `1`, y se calibra:
+con el sensor seco y luego con las puntas en agua se anotan las lecturas en `FUGA_SECO_RAW` y
+`FUGA_MOJADO_RAW`.
+
 Aquí termina todo lo que se programa.
 
 ---

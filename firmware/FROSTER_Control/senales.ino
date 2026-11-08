@@ -11,6 +11,7 @@ const Nota MEL_BAJA[]      = { {1175,140},{0,40},{784,220},{0,0} };
 const Nota MEL_CONGELA[]   = { {2093,90},{0,90},{2093,90},{0,90},{2093,90},{0,0} };
 const Nota MEL_SIN_HIELO[] = { {1047,400},{0,150},{1047,400},{0,0} };
 const Nota MEL_SENSOR[]    = { {330,250},{0,150},{330,250},{0,150},{330,250},{0,0} };
+const Nota MEL_FUGA[]      = { {1568,150},{0,60},{1047,150},{0,60},{1568,150},{0,60},{1047,150},{0,0} };
 
 const Nota *melodia = nullptr;
 uint8_t notaIdx = 0;
@@ -71,6 +72,7 @@ void gestionarSenales(const Salidas &s) {
   if (ahora < 10000UL)               encendido ? color(0, 0, 255)   : color(0, 0, 0);
   else if (s.alerta == A_CONGELA)    encendido ? color(160, 0, 255) : color(0, 0, 0);
   else if (s.alerta == A_SIN_HIELO)  encendido ? color(255, 80, 0)  : color(0, 0, 0);
+  else if (s.alerta == A_FUGA)       encendido ? color(255, 255, 255) : color(0, 0, 0);
   else if (s.alerta == A_SENSOR)     encendido ? color(255, 0, 0)   : color(0, 0, 0);
   else if (s.motivo == M_PRECIRC || s.motivo == M_ESPERA) color(255, 180, 0);
   else if (nivel == 3)               color(0, 0, 255);
@@ -83,7 +85,8 @@ void gestionarSenales(const Salidas &s) {
   } else if (s.alerta != A_NINGUNA) {
     if (s.alerta != alertaPrev || ahora - tAlerta >= 60000UL) {
       tAlerta = ahora;
-      tocar(s.alerta == A_CONGELA ? MEL_CONGELA : s.alerta == A_SIN_HIELO ? MEL_SIN_HIELO : MEL_SENSOR);
+      tocar(s.alerta == A_CONGELA ? MEL_CONGELA : s.alerta == A_SIN_HIELO ? MEL_SIN_HIELO :
+            s.alerta == A_FUGA ? MEL_FUGA : MEL_SENSOR);
     }
   } else if (nivel != nivelPrev) {
     tocar(nivel > nivelPrev ? (nivel == 3 ? MEL_SUBE_3 : MEL_SUBE_2) : MEL_BAJA);

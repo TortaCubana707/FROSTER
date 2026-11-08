@@ -159,6 +159,7 @@ void publicar() {
   ponerLectura(l, "punto_rocio", rocio);
   ponerLectura(l, "placa_fria",  tubo);
   ponerLectura(l, "disipador_a", agua);
+  ponerLectura(l, "fuga_pct",    gFugaPct);
   ponerLectura(l, "aire_salida", cam);
   ponerLectura(l, "delta_t",     (isnan(cam) || isnan(tubo)) ? NAN : cam - tubo);
   ponerLectura(l, "pendiente",   s.pendiente);

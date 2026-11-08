@@ -19,7 +19,8 @@
  *      arranca 15 s antes que ellas y se apaga 60 s despues.
  *   4. Reparte el desgaste: en el nivel 2 trabaja la celda con menos horas.
  *   5. Se defiende: congelamiento del bloque, agua sin hielo o un sensor
- *      muerto apagan las celdas aunque la temperatura pida frio.
+ *      muerto apagan las celdas aunque la temperatura pida frio. Una fuga de
+ *      agua junto a la bomba apaga todo: celdas, bomba y ventiladores.
  *   6. Explica cada decision (motivo) en pantalla, por Serial y en Firebase,
  *      y la avisa con el LED RGB (color por estado) y el buzzer (sonido por evento).
  *   7. El control NO depende de internet: vive en su propia tarea.
@@ -43,6 +44,7 @@
  *   DS18B20 waterblock .... no instalado (SENSOR_AGUA 0); el DHT22 mide la camara
  *   D4184 celda A ......... GPIO25        D4184 celda B ........ GPIO26
  *   D4184 bomba+ventiladores GPIO27 (PWM a 1 kHz: mas aire en cada nivel)
+ *   Sensor de fuga ........ AO en GPIO34 (humedad junto a la bomba; VCC al pin 3V3)
  *   LED RGB ............... R GPIO32, G GPIO33, B GPIO13 (220 ohm en cada color)
  *   Buzzer pasivo (modulo de 3 pines) S en GPIO23, VCC a V y GND a G del D23
  *   OLED 0.96 I2C ......... bus I2C PROPIO: SDA GPIO16, SCL GPIO17 (G y V de la fila D17).
@@ -101,6 +103,10 @@
 #define PIN_LED_G    33
 #define PIN_LED_B    13
 #define PIN_BUZZER   23
+#define PIN_FUGA     34    // AO del sensor de humedad junto a la bomba (solo entrada, ADC1)
+/* 1 = el sensor de fuga esta conectado. Con 0 no se lee: un GPIO34 al aire marca "mojado"
+   y apagaria todo. */
+#define SENSOR_FUGA  0
 #define OLED_SDA     16    // segundo bus I2C (Wire1), solo para la OLED
 #define OLED_SCL     17
 
@@ -119,6 +125,11 @@
 #define CAL_BLOQUE_C   0.0f
 
 #define WIFI_REINTENTO_MS 10000UL   // cada cuanto se reintenta la red si se cae
+
+/* Calibracion del sensor de fuga: lectura del ADC (0 a 4095) con el sensor seco y con
+   las puntas en agua. Se miden con el Monitor Serie y se escriben aqui. */
+#define FUGA_SECO_RAW    4095
+#define FUGA_MOJADO_RAW  1500
 
 /* Tipo de LED RGB. 0 = catodo comun (pata larga a G)
                     1 = anodo comun  (pata larga al pin 3.3V) */
@@ -163,13 +174,20 @@ struct Nota { uint16_t hz, ms; };            // hz 0 = silencio; ms 0 = fin
 #define PROXY_ESPERA_MS    180000UL
 #define PROXY_MARGEN_C      2.0f
 #define PROXY_REARME_MS    300000UL   // 5 min apagadas por cada corte (maximo 30 min)
+/* Fuga: humedad junto a la bomba. Se confirma 4 s seguida y se suelta tras 30 s ya
+   seca, para que una gota suelta no apague todo ni un sensor que se seca lo prenda y
+   apague una y otra vez. */
+#define FUGA_UMBRAL_PCT    40.0f
+#define FUGA_HISTERESIS    10.0f
+#define FUGA_CONFIRMA_MS    4000UL
+#define FUGA_LIBERA_MS     30000UL
 
 enum Modo : uint8_t { MODO_AUTO = 0, MODO_MANUAL = 1, MODO_APAGADO = 2 };
 enum Motivo : uint8_t {
   M_REPOSO = 0, M_PRECIRC, M_SUBIDA, M_SOBRE, M_BAJO, M_ESPERA,
-  M_CONGELA, M_SIN_HIELO, M_SENSOR, M_MANUAL, M_APAGADO, M_CARGA
+  M_CONGELA, M_SIN_HIELO, M_SENSOR, M_MANUAL, M_APAGADO, M_CARGA, M_FUGA
 };
-enum Alerta : uint8_t { A_NINGUNA = 0, A_CONGELA, A_SIN_HIELO, A_SENSOR };
+enum Alerta : uint8_t { A_NINGUNA = 0, A_CONGELA, A_SIN_HIELO, A_SENSOR, A_FUGA };
 
 struct Entradas {
   float   tCamara, tTubo, tAgua;     // NAN si el sensor no contesta
@@ -177,6 +195,7 @@ struct Entradas {
   uint8_t modo;
   bool    manualA, manualB, cargaAlta;
   bool    sinSensorAgua;             // true: no hay termometro en el waterblock
+  bool    fuga;                      // fuga de agua confirmada (ver filtrarFuga)
 };
 
 struct Salidas {
@@ -210,6 +229,22 @@ struct Control {                     // memoria del controlador
   uint8_t  ciclosRapidos;            // cuantas veces se prendio de nuevo en menos de 4 min
   uint32_t tCandidato;               // desde cuando se pide
 };
+
+/* Convierte la humedad del sensor de fuga (0 a 100 %) en "hay fuga" con confirmacion
+   e histeresis. NAN = sin sensor: nunca hay fuga. */
+struct FiltroFuga { bool listo, fuga; uint32_t tCambio; };
+
+bool filtrarFuga(FiltroFuga &f, float pct, uint32_t ahora) {
+  if (isnan(pct)) return f.fuga = false;
+  if (!f.listo) { f.listo = true; f.tCambio = ahora; }
+  const bool pide = pct >= (f.fuga ? FUGA_UMBRAL_PCT - FUGA_HISTERESIS : FUGA_UMBRAL_PCT);
+  if (pide == f.fuga) { f.tCambio = ahora; return f.fuga; }
+  if (ahora - f.tCambio >= (f.fuga ? FUGA_LIBERA_MS : FUGA_CONFIRMA_MS)) {
+    f.fuga = pide;
+    f.tCambio = ahora;
+  }
+  return f.fuga;
+}
 
 static inline float _lim(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -307,7 +342,8 @@ Salidas decidir(const Entradas &e, Control &c, uint32_t ahora) {
   const bool apagado = (e.modo == MODO_APAGADO);
   if (apagado && !c.apagadoPrev) c.tApagado = ahora;
   c.apagadoPrev = apagado;
-  const bool bombaDeseada = !apagado || (ahora - c.tApagado) < T_POSTCIRC_MS;
+  /* Con fuga se para la bomba de inmediato: seguir bombeando solo saca mas agua */
+  const bool bombaDeseada = !e.fuga && (!apagado || (ahora - c.tApagado) < T_POSTCIRC_MS);
   if (bombaDeseada && !c.bombaOn) c.tBombaOn = ahora;
   c.bombaOn = bombaDeseada;
   s.bomba = c.bombaOn;
@@ -319,7 +355,8 @@ Salidas decidir(const Entradas &e, Control &c, uint32_t ahora) {
   uint8_t alerta = A_NINGUNA, motivo = c.motivoNivel;
 
   const bool fallaSensor = fTubo || fAgua || (e.modo == MODO_AUTO && fCam);
-  if (apagado)            { seguridad = true; motivo = M_APAGADO; }
+  if (e.fuga)             { seguridad = true; motivo = M_FUGA;      alerta = A_FUGA; }
+  else if (apagado)       { seguridad = true; motivo = M_APAGADO; }
   else if (fallaSensor)   { seguridad = true; motivo = M_SENSOR;    alerta = A_SENSOR; }
   else if (c.congelado)   { seguridad = true; motivo = M_CONGELA;   alerta = A_CONGELA; }
   else if (c.sinHielo)    { seguridad = true; motivo = M_SIN_HIELO; alerta = A_SIN_HIELO; }
@@ -328,7 +365,8 @@ Salidas decidir(const Entradas &e, Control &c, uint32_t ahora) {
   } else {
     /* Si veniamos de una proteccion, apagado o manual, ese motivo ya no aplica */
     if (motivo == M_CONGELA || motivo == M_SIN_HIELO || motivo == M_SENSOR ||
-        motivo == M_MANUAL || motivo == M_APAGADO || motivo == M_CARGA) motivo = M_REPOSO;
+        motivo == M_MANUAL || motivo == M_APAGADO || motivo == M_CARGA ||
+        motivo == M_FUGA) motivo = M_REPOSO;
     const int celdas = (c.A ? 1 : 0) + (c.B ? 1 : 0);
     const float sube2 = e.cargaAlta ? e.setpoint - 0.5f : e.setpoint + 0.5f;
     const float sube3 = e.cargaAlta ? e.setpoint + 1.0f : e.setpoint + 2.5f;
@@ -445,17 +483,18 @@ bool hayPendienteConfig = false;
 /* Lo que comparten las dos tareas. Siempre se copia dentro de una seccion
    critica para no leer un dato a medio escribir. */
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-Entradas gOrdenes = { NAN, NAN, NAN, 28.0f, MODO_AUTO, false, false, false, SENSOR_AGUA == 0 };
+Entradas gOrdenes = { NAN, NAN, NAN, 28.0f, MODO_AUTO, false, false, false, SENSOR_AGUA == 0, false };
 Salidas  gSalidas = {};
 float gCam = NAN, gTubo = NAN, gAgua = NAN, gHum = NAN, gRocio = NAN;
+float gFugaPct = NAN;                 // humedad junto a la bomba, 0 a 100 % (NAN sin sensor)
 uint32_t gMsOnA = 0, gMsOnB = 0;      // tiempo encendida de cada celda (para la LCD)
 Control  ctl;      // solo lo toca la tarea de control
 
 const char *MOTIVOS[] = { "Reposo", "Pre-circulando", "Subida rapida", "Sobre objetivo",
                           "Bajo objetivo", "Espera 60 s", "Congelamiento", "Sin hielo/bomba",
-                          "Falla sensor", "Manual", "Apagado", "Carga alta" };
+                          "Falla sensor", "Manual", "Apagado", "Carga alta", "Fuga de agua" };
 const char *ALERTAS[] = { "", "Congelamiento del bloque", "Sin hielo o bomba parada",
-                          "Falla de sensor" };
+                          "Falla de sensor", "Fuga de agua junto a la bomba" };
 
 static bool termometroOk(float t) { return !isnan(t) && t > -40.0f && t < 110.0f && t != 85.0f; }
 
@@ -478,6 +517,9 @@ void setup() {
   ledcAttach(PIN_BOMBA, PWM_VENT_HZ, 8);          // bomba y ventiladores con PWM
   ledcWrite(PIN_BOMBA, 0);
   iniciarSenales();
+#if SENSOR_FUGA
+  analogSetPinAttenuation(PIN_FUGA, ADC_11db);    // lee de 0 a 3.3 V
+#endif
 
   Serial.begin(115200);
   Serial.println("\n=== FROSTER - control inteligente de 3 niveles ===");
@@ -555,9 +597,9 @@ void loop() {
 
   if (ahora - tSerie >= 2000UL) {
     tSerie = ahora;
-    Serial.printf("N%d | cam %.1f (%+.2f/min, prev %.1f) obj %.1f | bloque %.1f agua %.1f | "
+    Serial.printf("N%d | cam %.1f (%+.2f/min, prev %.1f) obj %.1f | bloque %.1f fuga %.0f%% | "
                   "A:%s B:%s bomba:%s | %s%s%s\n",
-                  s.nivel, cam, s.pendiente, s.prediccion, o.setpoint, tubo, agua,
+                  s.nivel, cam, s.pendiente, s.prediccion, o.setpoint, tubo, gFugaPct,
                   s.celdaA ? "ON" : "--", s.celdaB ? "ON" : "--", s.bomba ? "ON" : "--",
                   MOTIVOS[s.motivo], s.alerta ? " | ALERTA: " : "", ALERTAS[s.alerta]);
   }

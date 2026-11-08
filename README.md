@@ -40,6 +40,14 @@ El control decide con la temperatura **prevista a 2 minutos**, exige que un camb
 20 s, respeta 60 s mínimos encendida y apagada por celda, reparte el desgaste entre las dos
 celdas y ensancha solo su banda si detecta que está ciclando.
 
+### Adaptaciones al Proyecto 1 (Sistema de Enfriamiento para Servidor)
+
+| Pide la guía | FROSTER usa | Por qué |
+|---|---|---|
+| Sensor de flujo o presencia | Sensor de humedad junto a la bomba | La bomba circula en los tres niveles, así que medir flujo no aporta; el riesgo real es una fuga junto a la electrónica de 12 V |
+| Relay de potencia | Módulos MOSFET D4184 | Conmutan la potencia con optoacoplador como un relay, pero admiten PWM y no tienen contactos que se desgasten |
+| — | Foco con su propio apagador | Es la carga que simula la computadora: el sistema de enfriamiento no debe poder apagar lo que enfría |
+
 ### Firmware sin bloqueos
 
 No hay ni un `delay()`: el `loop()` reparte su trabajo con `millis()` y el control corre en su
@@ -54,6 +62,7 @@ detener nada y cuenta las caídas (`estado/caidas_wifi`). Cada sensor tiene su a
 | Bloque frío bajo 0.5 °C | Apaga las celdas; vuelven al pasar de 6 °C |
 | Celda encendida 3 min y el bloque no está 2 °C más frío que la cámara | Se acabó el hielo o se paró la bomba (deducido, sin sensor de agua): apaga las celdas; reintenta tras 5 min por cada corte |
 | Un sensor sin lectura 10 s | Apaga las celdas |
+| Humedad junto a la bomba ≥ 40 % durante 4 s | Fuga: apaga celdas, bomba y ventiladores; vuelve 30 s después de secarse |
 | Arranque de la placa | 60 s de espera; la bomba arranca 15 s antes que las celdas y sigue 60 s después |
 
 ---
@@ -78,6 +87,7 @@ detener nada y cuenta las caídas (`estado/caidas_wifi`). Cada sensor tiene su a
 | Pantalla OLED 0.96" I2C (SSD1306) | 1 | Lo que decide el control: nivel, cámara, celdas, gráfica y motivo |
 | LED RGB + 3 resistencias de 220 Ω | 1 | Color por estado |
 | Buzzer pasivo de 3 pines | 1 | Un sonido por evento |
+| Sensor de humedad de 4 pines (suelo o lluvia) | 1 | Detecta fugas junto a la bomba |
 | Diodo 1N4007 | 1 | Protección de la bomba |
 | Power bank o cargador USB | 1 | Alimenta el ESP32 por el USB-C de la base |
 
@@ -114,6 +124,7 @@ así que la celda va directo a OUT+ / OUT− para que funcione el límite de 3 A
 | 25 | D4184 #1 — celda A |
 | 26 | D4184 #2 — celda B |
 | 27 | D4184 #3 — bomba y ventiladores, con PWM a 1 kHz (70 / 86 / 100 % según el nivel) |
+| 34 | Sensor de fuga (AO), junto a la bomba; VCC al pin 3V3 |
 | 32 / 33 / 13 | LED RGB (R / G / B) |
 | 23 | Buzzer pasivo de 3 pines |
 
@@ -135,6 +146,7 @@ Fue una decisión consciente; si un termómetro empieza a fallar, es lo primero 
 | Congelamiento | Morado parpadeando | 3 pitidos agudos, cada minuto |
 | Sin hielo | Naranja parpadeando | 2 pitidos largos, cada minuto |
 | Falla de sensor | Rojo parpadeando | Tono grave intermitente, cada minuto |
+| Fuga de agua | Blanco parpadeando | 2 tonos alternados, cada minuto |
 
 Si el LED resulta ser de **ánodo común**, se cambia `LED_ANODO_COMUN` a `1` en el código. Si el buzzer
 zumba o se calienta en silencio, se cambia `BUZZER_ACTIVO_BAJO` a `1`.

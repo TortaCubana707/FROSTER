@@ -10,7 +10,7 @@
 #include <vector>
 #include "logica_extraida.h"
 
-static const char *MOTIVOS_TXT[] = {"Reposo","Pre-circulando","Subida rapida","Sobre objetivo","Bajo objetivo","Espera 60 s","Congelamiento","Sin hielo/bomba","Falla sensor","Manual","Apagado","Carga alta"};
+static const char *MOTIVOS_TXT[] = {"Reposo","Pre-circulando","Subida rapida","Sobre objetivo","Bajo objetivo","Espera 60 s","Congelamiento","Sin hielo/bomba","Falla sensor","Manual","Apagado","Carga alta","Fuga de agua"};
 static int fallos = 0, pruebas = 0;
 #define VERIFICA(cond, ...) do { pruebas++; if (!(cond)) { fallos++; printf("   [FALLA] " __VA_ARGS__); printf("\n"); } } while (0)
 
@@ -76,7 +76,7 @@ struct Corrida {
 
     // ---- comprobar invariantes
     bool segura = (s.motivo == M_APAGADO || s.motivo == M_SENSOR || s.motivo == M_CONGELA ||
-                   s.motivo == M_SIN_HIELO) || (!isnan(e.tTubo) && e.tTubo < CONGELA_AVISO_C);
+                   s.motivo == M_SIN_HIELO || s.motivo == M_FUGA) || (!isnan(e.tTubo) && e.tTubo < CONGELA_AVISO_C);
     if (s.bomba && !bombaAnt) bombaDesde = t;
     if (!s.bomba) bombaDesde = 0;
     if ((s.celdaA || s.celdaB) && (!s.bomba || ((t - bombaDesde) < T_PRECIRC_MS && t > 60000))) violBomba++;
@@ -259,6 +259,26 @@ int main() {
     r.tuboForzado = NAN; r.correr(1.5);                       // 5.5 min despues
     VERIFICA(!r.log.back().s.sinHielo, "no reintento despues de 5 min");
     VERIFICA(r.violDwell == 0 && r.violSeguridad == 0, "violo tiempos o seguridad"); }
+
+  // ---------------------------------------------------------------- 13
+  seccion("13. Fuga junto a la bomba: se confirma en 4 s, apaga todo y vuelve 30 s despues de secarse");
+  { FiltroFuga f = {};
+    VERIFICA(!filtrarFuga(f, NAN, 0), "sin sensor marco fuga");
+    VERIFICA(!filtrarFuga(f, 90, 1000) && !filtrarFuga(f, 90, 4000), "una gota de 3 s ya marco fuga");
+    VERIFICA(filtrarFuga(f, 90, 5100), "no confirmo la fuga a los 4 s");
+    VERIFICA(filtrarFuga(f, 35, 6000), "solto la fuga con 35 %%: dentro de la histeresis");
+    VERIFICA(filtrarFuga(f, 10, 7000) && filtrarFuga(f, 10, 30000), "solto la fuga antes de 30 s seca");
+    VERIFICA(!filtrarFuga(f, 10, 37100), "no solto la fuga tras 30 s seca"); }
+  { Corrida r; r.e.sinSensorAgua = true; r.aguaNaN = true;
+    r.p.carga = 38; r.p.cam = 33; r.p.hielo = 900000; r.correr(5);
+    bool trabajaba = r.log.back().s.celdaA || r.log.back().s.celdaB;
+    r.e.fuga = true; Salidas s = r.tick();
+    VERIFICA(trabajaba, "las celdas no trabajaban antes de la fuga");
+    VERIFICA(!s.celdaA && !s.celdaB && !s.bomba, "con fuga siguio algo encendido");
+    VERIFICA(s.alerta == A_FUGA && s.motivo == M_FUGA, "no marco la alerta de fuga");
+    r.e.fuga = false; r.correr(1);
+    VERIFICA(r.log.back().s.bomba && r.log.back().s.alerta == A_NINGUNA, "no volvio tras secarse");
+    VERIFICA(r.violSeguridad == 0, "violo la seguridad"); }
 
   // ---------------------------------------------------------------- 10
   seccion("10. Reparto del desgaste: la celda con menos horas es la que trabaja sola");

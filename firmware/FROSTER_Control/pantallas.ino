@@ -13,9 +13,10 @@ void pantalla(const Salidas &s, float tubo, float agua, float hum, float rocio,
     case 0:                                       // el modulo
       {
         char t1[8], t2[8];
-        if (isnan(tubo)) snprintf(t1, sizeof(t1), "   --"); else snprintf(t1, sizeof(t1), "%5.1f", tubo);
-        if (isnan(agua)) snprintf(t2, sizeof(t2), "   --"); else snprintf(t2, sizeof(t2), "%5.1f", agua);
-        snprintf(a, sizeof(a), "Blq%s Ag%s", t1, t2);
+        if (isnan(tubo)) snprintf(t1, sizeof(t1), "  --"); else snprintf(t1, sizeof(t1), "%4.1f", tubo);
+        // fila de arriba: bloque frio y humedad del sensor de fuga
+        if (isnan(gFugaPct)) snprintf(t2, sizeof(t2), "  --"); else snprintf(t2, sizeof(t2), "%3.0f%%", gFugaPct);
+        snprintf(a, sizeof(a), "Blq%s Fuga%s", t1, t2);     // "Blq22.5 Fuga 12%": 16 letras
       }
       snprintf(b, sizeof(b), "Roc%5.1f Hum%3.0f%%", rocio, hum);
       break;

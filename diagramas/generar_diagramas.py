@@ -228,6 +228,7 @@ def control():
     d25 = fila("D25", 710, "der")
     d33 = fila("D33", 850, "der")
     d32 = fila("D32", 960, "der")
+    d34 = fila("D34", 1150, "der")
 
     STUB = 1300
     c.texto(STUB - 100, 330, "Los D4184 tienen optoacoplador:\nno hace falta unir tierras con\nla fuente de 12V.", 14, CUERPO)
@@ -254,6 +255,17 @@ def control():
     c.resistencia(1420, 1004, "220 Ω")
     c.texto(1600, 1062, "Si es de ánodo común: la pata larga va\nal pin 3.3V del jumper y en el código\nLED_ANODO_COMUN = 1", 13, CUERPO)
     c.texto(1600, 800, "la pata más larga = común", 13, CUERPO)
+
+    # Sensor de fuga (humedad) junto a la bomba: salida analógica AO al D34 (solo entrada).
+    # Se alimenta del pin 3V3 y no de la fila V: con 5 V su AO pasaría de lo que lee el ESP32.
+    fu = componente(1300, 1080, 290, 190, ENTRADA, "Sensor de fuga\njunto a la bomba",
+                    [("GND", d34["G"][1]), ("AO", d34["S"][1]), ("VCC", 1240)], lado="izq")
+    cable(d34["G"], fu["GND"], NEGRO)
+    cable(d34["S"], fu["AO"], AZUL)
+    c.linea([fu["VCC"], (1250, 1240), (1250, 1300)], ROJO, sw=3)
+    c.punto(1250, 1300, ROJO, 10)
+    c.texto(1262, 1292, "→ pin 3V3 de la placa (no la fila V)", 13, ROJO)
+    c.texto(1610, 1180, "DO: sin usar", 13, CUERPO)
 
     # ---- alimentacion
     PBY = BY + BH + 80
@@ -295,7 +307,7 @@ def control():
     # LCD: el modulo, el uso y la red
     LX = OX + 860
     c.texto(LX, OY + 46, "LCD 16×2 · el módulo, el uso y la red (cambia cada 3 s)", 16, OSCURO)
-    vistas = [("1 · el módulo", "Blq  5.5 Ag  8.1", "Roc 14.2 Hum 55%"),
+    vistas = [("1 · el módulo", "Blq 5.5 Fuga  0%", "Roc 14.2 Hum 55%"),
               ("2 · uso de celdas", "Uso celdas (h)", "A  0.53 B  0.21"),
               ("3 · la red", "WiFi -62dBm FB", "192.168.1.50"),
               ("si hay alerta", "** ALERTA **", "Bloque congelado")]
