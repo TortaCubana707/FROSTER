@@ -79,6 +79,8 @@ void iniciarFirebase() {
 static volatile bool crearConfigInicial = false;
 static volatile double ackPendiente = 0;       // cmd_id por confirmar (0 = nada)
 static volatile uint32_t tUltimoComando = 0;   // millis() al recibirlo, para medir el atraso local
+static double idUsb = 0;                       // cmd_id del ultimo comando escrito por USB
+static uint32_t tEnvioUsb = 0;                 // millis() al subirlo: mide la ida y vuelta por Firebase
 
 static float numeroDe(StreamData &d) {
   switch (d.dataTypeEnum()) {
@@ -351,6 +353,10 @@ void atenderNube() {
     const uint32_t local = millis() - tUltimoComando;
     a.set("aplicado_en_ms", (int)local);
     if (subir(RUTA_ACK, a)) Serial.printf(">>> Comando %.0f confirmado (%lu ms dentro del ESP32)\n", id, local);
+    if (id == idUsb) {
+      Serial.printf(">>> Ida y vuelta ESP32 -> Firebase -> ESP32: %lu ms\n", tUltimoComando - tEnvioUsb);
+      idUsb = 0;
+    }
   }
 
   // 2. config/ no existia: crear los valores de fabrica
@@ -365,10 +371,16 @@ void atenderNube() {
     subir(RUTA_CONFIG, ini);
   }
 
-  // 3. Lo que se pidio por USB
-  if (hayPendienteConfig && subir(RUTA_CONFIG, pendienteConfig)) {
-    pendienteConfig.clear();
-    hayPendienteConfig = false;
+  // 3. Lo que se pidio por USB. Lleva cmd_id: al volver por el stream se mide la ida y vuelta.
+  if (hayPendienteConfig) {
+    const double id = horaMs() > 0 ? horaMs() : (double)millis();
+    pendienteConfig.set("cmd_id", id);
+    tEnvioUsb = millis();
+    if (subir(RUTA_CONFIG, pendienteConfig)) {
+      idUsb = id;
+      pendienteConfig.clear();
+      hayPendienteConfig = false;
+    }
   }
 
   // 4. Lecturas, estado, dispositivo y eventos, revisados cada segundo
