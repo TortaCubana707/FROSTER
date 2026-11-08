@@ -24,12 +24,25 @@
  *      y la avisa con el LED RGB (color por estado) y el buzzer (sonido por evento).
  *   7. El control NO depende de internet: vive en su propia tarea.
  *
+ * SIN BLOQUEOS
+ *   No hay ni un delay(): el loop() reparte su trabajo con millis() (red cada
+ *   3 s, LCD cada 3 s, OLED cada 1 s, una nota del buzzer cuando toca) y la
+ *   tarea de control corre cada 2 s en su propio hilo de FreeRTOS. Si se cae
+ *   el WiFi, vigilarWiFi() lo reintenta cada 10 s sin detener nada.
+ *
+ * ARCHIVOS (pestanas del IDE de Arduino)
+ *   FROSTER_Control.ino  configuracion, logica de decision, setup() y loop()
+ *   control.ino          tarea de control: leer sensores, decidir y mover salidas
+ *   nube.ino             WiFi, Firebase y ordenes por USB
+ *   pantallas.ino        LCD 16x2 y OLED
+ *   senales.ino          LED RGB y buzzer
+ *
  * CONEXIONES
  *   DHT22 (camara) ........ GPIO4         Pantalla LCD I2C ..... SDA 21, SCL 22
- *   DS18B20 bloque frio ... GPIO18 (arriba, congelamiento)
+ *   DS18B20 bloque frio ... GPIO18 (dentro del bloque, congelamiento)
  *   DS18B20 waterblock .... no instalado (SENSOR_AGUA 0); el DHT22 mide la camara
  *   D4184 celda A ......... GPIO25        D4184 celda B ........ GPIO26
- *   D4184 bomba+ventiladores GPIO27
+ *   D4184 bomba+ventiladores GPIO27 (PWM a 1 kHz: mas aire en cada nivel)
  *   LED RGB ............... R GPIO32, G GPIO33, B GPIO13 (220 ohm en cada color)
  *   Buzzer pasivo (modulo de 3 pines) S en GPIO23, VCC a V y GND a G del D23
  *   OLED 0.96 I2C ......... bus I2C PROPIO: SDA GPIO16, SCL GPIO17 (G y V de la fila D17).
@@ -76,20 +89,36 @@
 /* --- Pines --- */
 #define DHTPIN       4
 #define DHTTYPE      DHT22
-#define PIN_TUBO     18    // DS18B20 arriba, en el bloque frio (congelamiento)
+#define PIN_TUBO     18    // DS18B20 dentro del bloque frio (congelamiento)
 #define PIN_AGUA     5     // DS18B20 del waterblock (solo si SENSOR_AGUA es 1)
 /* 1 = hay termometro en el waterblock (GPIO5). 0 = no hay: la falta de hielo o de bomba
    se deduce del bloque frio (ver PROXY_* en la logica). */
 #define SENSOR_AGUA  0
 #define PIN_CELDA_A  25
 #define PIN_CELDA_B  26
-#define PIN_BOMBA    27    // bomba y los 3 ventiladores en un solo D4184
+#define PIN_BOMBA    27    // bomba y los 3 ventiladores en un solo D4184, con PWM
 #define PIN_LED_R    32
 #define PIN_LED_G    33
 #define PIN_LED_B    13
 #define PIN_BUZZER   23
 #define OLED_SDA     16    // segundo bus I2C (Wire1), solo para la OLED
 #define OLED_SCL     17
+
+/* Ventiladores con PWM. Comparten el D4184 #3 con la bomba; el ciclo de trabajo
+   (0 a 255) sube con el nivel. El optoacoplador del D4184 (PC817) es lento:
+   arriba de unos 2 kHz ya no alcanza a seguir la senal. */
+#define PWM_VENT_HZ   1000
+#define PWM_VENT_N1   180      // 70 %: solo bomba y ventiladores
+#define PWM_VENT_N2   220      // 86 %: una celda
+#define PWM_VENT_N3   255      // 100 %: las dos celdas
+
+/* Calibracion: lo que se le suma a cada lectura. Se ajusta comparando contra un
+   termometro de referencia (el DS18B20, en agua con hielo, debe marcar 0 C). */
+#define CAL_CAMARA_C   0.0f
+#define CAL_HUMEDAD    0.0f
+#define CAL_BLOQUE_C   0.0f
+
+#define WIFI_REINTENTO_MS 10000UL   // cada cuanto se reintenta la red si se cae
 
 /* Tipo de LED RGB. 0 = catodo comun (pata larga a G)
                     1 = anodo comun  (pata larga al pin 3.3V) */
@@ -409,6 +438,7 @@ bool hayOled = false;
 OneWire busTubo(PIN_TUBO), busAgua(PIN_AGUA);
 DallasTemperature termTubo(&busTubo), termAgua(&busAgua);
 bool firebaseIniciado = false;
+uint32_t gCaidasWiFi = 0;              // veces que se perdio la red desde el arranque
 FirebaseJson pendienteConfig;          // ajustes pedidos por USB que faltan subir a Firebase
 bool hayPendienteConfig = false;
 
@@ -436,481 +466,6 @@ static float puntoDeRocio(float t, float hr) {
   return (b * g) / (a - g);
 }
 
-/* ---------------------------------------------------------------------------
- * TAREA DE CONTROL
- * Lee, decide y mueve las salidas cada 2 s, pase lo que pase con el WiFi o con
- * Firebase. Si internet se cae o la nube tarda, esto no se entera.
- * ------------------------------------------------------------------------- */
-void tareaControl(void *arg) {
-  for (;;) {
-    uint32_t t0 = millis();
-
-    termTubo.requestTemperatures();
-    termAgua.requestTemperatures();
-    float cam = dht.readTemperature();
-    float hum = dht.readHumidity();
-    vTaskDelay(pdMS_TO_TICKS(420));            // lo que tarda la conversion de 11 bits
-    float tubo = termTubo.getTempCByIndex(0);
-    float agua = termAgua.getTempCByIndex(0);
-    if (!termometroOk(tubo)) tubo = NAN;       // -127 = no contesta, 85 = lectura sin terminar
-    if (!termometroOk(agua)) agua = NAN;
-
-    Entradas e;
-    portENTER_CRITICAL(&mux);
-    e = gOrdenes;
-    portEXIT_CRITICAL(&mux);
-    e.tCamara = cam; e.tTubo = tubo; e.tAgua = agua;
-
-    Salidas s = decidir(e, ctl, millis());
-
-    digitalWrite(PIN_BOMBA,   s.bomba   ? HIGH : LOW);
-    digitalWrite(PIN_CELDA_A, s.celdaA  ? HIGH : LOW);
-    digitalWrite(PIN_CELDA_B, s.celdaB  ? HIGH : LOW);
-
-    portENTER_CRITICAL(&mux);
-    gSalidas = s;
-    gCam = cam; gTubo = tubo; gAgua = agua; gHum = hum;
-    gMsOnA = ctl.msOnA; gMsOnB = ctl.msOnB;
-    gRocio = puntoDeRocio(cam, hum);
-    portEXIT_CRITICAL(&mux);
-
-    uint32_t usado = millis() - t0;
-    vTaskDelay(pdMS_TO_TICKS(usado < 2000 ? 2000 - usado : 20));
-  }
-}
-
-/* ---------------------------------------------------------------------------
- * NUBE: lee las ordenes de la app y publica lo que esta pasando
- * ------------------------------------------------------------------------- */
-static float redondear(float v) { return isnan(v) ? 0.0f : roundf(v * 10.0f) / 10.0f; }
-
-/* Solo publica la lectura si existe: un sensor ausente no debe aparecer como 0 grados. */
-static void ponerLectura(FirebaseJson &j, const char *clave, float v) {
-  if (!isnan(v)) j.set(clave, roundf(v * 10.0f) / 10.0f);
-}
-
-void iniciarFirebase() {
-  config.api_key = API_KEY;
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
-  config.database_url = DATABASE_URL;
-  config.token_status_callback = tokenStatusCallback;
-  Firebase.reconnectNetwork(true);
-  fbdo.setBSSLBufferSize(4096, 1024);
-  Firebase.begin(&config, &auth);
-  Firebase.setDoubleDigits(5);
-  Firebase.setReadTimeout(fbdo, 3000);   // que una nube lenta no sea un problema
-  firebaseIniciado = true;
-  Serial.println("Firebase iniciado.");
-}
-
-/* Una sola consulta trae setpoint, modo y los interruptores de la app. */
-/* ---------------------------------------------------------------------------
- * COMANDOS POR USB (Monitor Serie a 115200, terminar con Enter):
- *   obj 23        objetivo de la camara (15 a 40 C)
- *   modo auto     modo auto | manual | off
- *   a 1  /  b 0   celda A o B en modo manual
- *   carga 1       aviso de carga alta (1 o 0)
- * Se aplican al instante y se guardan en Firebase (config), igual que desde la app.
- * ------------------------------------------------------------------------- */
-void atenderComandosSerie() {
-  static String linea;
-  while (Serial.available()) {
-    char ch = (char)Serial.read();
-    if (ch != '\n' && ch != '\r') { if (linea.length() < 40) linea += ch; continue; }
-    linea.trim();
-    if (linea.length() == 0) continue;
-    String cmd = linea; linea = "";
-    cmd.toLowerCase();
-    int esp = cmd.indexOf(' ');
-    String clave = esp < 0 ? cmd : cmd.substring(0, esp);
-    String valor = esp < 0 ? "" : cmd.substring(esp + 1);
-    valor.trim();
-
-    portENTER_CRITICAL(&mux);
-    Entradas n = gOrdenes;
-    portEXIT_CRITICAL(&mux);
-    bool ok = true;
-    if (clave == "obj") {
-      float v = valor.toFloat();
-      if (v >= 15.0f && v <= 40.0f) { n.setpoint = v; pendienteConfig.set("setpoint", v); }
-      else ok = false;
-    } else if (clave == "modo") {
-      if (valor == "auto" || valor == "manual" || valor == "off") {
-        n.modo = valor == "manual" ? MODO_MANUAL : valor == "off" ? MODO_APAGADO : MODO_AUTO;
-        pendienteConfig.set("modo", valor);
-      } else ok = false;
-    } else if (clave == "a" || clave == "b") {
-      bool v = valor == "1";
-      if (clave == "a") { n.manualA = v; pendienteConfig.set("manual_a", v); }
-      else              { n.manualB = v; pendienteConfig.set("manual_b", v); }
-    } else if (clave == "carga") {
-      n.cargaAlta = valor == "1";
-      pendienteConfig.set("carga_alta", n.cargaAlta);
-    } else {
-      ok = false;
-    }
-    if (!ok) { Serial.printf(">>> Comando no valido: %s\n", cmd.c_str()); continue; }
-    portENTER_CRITICAL(&mux);
-    gOrdenes.setpoint = n.setpoint; gOrdenes.modo = n.modo;
-    gOrdenes.manualA = n.manualA;   gOrdenes.manualB = n.manualB;
-    gOrdenes.cargaAlta = n.cargaAlta;
-    portEXIT_CRITICAL(&mux);
-    hayPendienteConfig = true;
-    Serial.printf(">>> OK: %s\n", cmd.c_str());
-  }
-}
-
-void leerOrdenes() {
-  if (!Firebase.getJSON(fbdo, RUTA_CONFIG)) return;
-
-  if (fbdo.dataType() == "null") {                 // primera vez: crear valores iniciales
-    FirebaseJson ini;
-    ini.set("setpoint", 28.0);
-    ini.set("modo", "auto");
-    ini.set("manual_a", false);
-    ini.set("manual_b", false);
-    ini.set("carga_alta", false);
-    Firebase.updateNode(fbdo, RUTA_CONFIG, ini);
-    return;
-  }
-
-  FirebaseJson *j = fbdo.jsonObjectPtr();
-  FirebaseJsonData r;
-  Entradas n;
-  portENTER_CRITICAL(&mux);
-  n = gOrdenes;
-  portEXIT_CRITICAL(&mux);
-
-  if (j->get(r, "setpoint") && r.success) {
-    float v = r.to<float>();
-    if (v >= 15.0f && v <= 40.0f) n.setpoint = v;  // un valor absurdo no se obedece
-  }
-  if (j->get(r, "modo") && r.success) {
-    String m = r.to<String>();
-    n.modo = (m == "manual") ? MODO_MANUAL : (m == "off" || m == "apagado") ? MODO_APAGADO : MODO_AUTO;
-  }
-  if (j->get(r, "manual_a") && r.success)   n.manualA = r.to<bool>();
-  if (j->get(r, "manual_b") && r.success)   n.manualB = r.to<bool>();
-  if (j->get(r, "carga_alta") && r.success) n.cargaAlta = r.to<bool>();
-
-  portENTER_CRITICAL(&mux);
-  gOrdenes.setpoint = n.setpoint; gOrdenes.modo = n.modo;
-  gOrdenes.manualA = n.manualA;   gOrdenes.manualB = n.manualB;
-  gOrdenes.cargaAlta = n.cargaAlta;
-  portEXIT_CRITICAL(&mux);
-}
-
-void publicar() {
-  Salidas s; Entradas o; float cam, tubo, agua, hum, rocio;
-  portENTER_CRITICAL(&mux);
-  s = gSalidas; o = gOrdenes;
-  cam = gCam; tubo = gTubo; agua = gAgua; hum = gHum; rocio = gRocio;
-  portEXIT_CRITICAL(&mux);
-
-  FirebaseJson l;
-  ponerLectura(l, "ambiente",    cam);
-  ponerLectura(l, "humedad",     hum);
-  ponerLectura(l, "punto_rocio", rocio);
-  ponerLectura(l, "placa_fria",  tubo);
-  ponerLectura(l, "disipador_a", agua);
-  ponerLectura(l, "aire_salida", cam);
-  ponerLectura(l, "delta_t",     (isnan(cam) || isnan(tubo)) ? NAN : cam - tubo);
-  ponerLectura(l, "pendiente",   s.pendiente);
-  ponerLectura(l, "prediccion",  s.prediccion);
-  Firebase.updateNode(fbdo, RUTA_LECTURAS, l);
-#if SENSOR_AGUA == 0
-  static bool borrado = false;          // quita una vez la lectura vieja del agua
-  if (!borrado) borrado = Firebase.deleteNode(fbdo, RUTA_LECTURAS "/disipador_a");
-#endif
-
-  FirebaseJson st;
-  st.set("nivel",      (int)s.nivel);
-  st.set("celda_a",    s.celdaA);
-  st.set("celda_b",    s.celdaB);
-  st.set("bloqueo_a",  s.congelado || s.sinHielo);
-  st.set("bloqueo_b",  s.congelado || s.sinHielo);
-  st.set("bomba",      s.bomba);
-  st.set("pwm_fans",   s.bomba ? 100 : 0);
-  st.set("setpoint",   o.setpoint);
-  st.set("modo",       o.modo == MODO_MANUAL ? "manual" : o.modo == MODO_APAGADO ? "off" : "auto");
-  st.set("motivo",     MOTIVOS[s.motivo]);
-  st.set("alerta",     ALERTAS[s.alerta]);
-  st.set("condensa",   (!isnan(tubo) && !isnan(rocio)) ? (tubo < rocio) : false);
-  st.set("carga_alta", o.cargaAlta);
-  st.set("online",     true);
-  st.set("uptime_s",   (int)(millis() / 1000));
-  Firebase.updateNode(fbdo, RUTA_ESTADO, st);
-}
-
-/* ---------------------------------------------------------------------------
- * PANTALLA: 4 vistas que rotan cada 3 s; si hay alerta, se intercala.
- * ------------------------------------------------------------------------- */
-void pantalla(const Salidas &s, float tubo, float agua, float hum, float rocio,
-              uint32_t msA, uint32_t msB) {
-  static uint8_t paso = 0;
-  char a[24], b[24];
-  uint8_t vista = paso % 3;
-  if (s.alerta != A_NINGUNA && (paso % 2) == 0) vista = 9;    // la alerta se intercala
-  paso++;
-
-  switch (vista) {
-    case 0:                                       // el modulo
-      {
-        char t1[8], t2[8];
-        if (isnan(tubo)) snprintf(t1, sizeof(t1), "   --"); else snprintf(t1, sizeof(t1), "%5.1f", tubo);
-        if (isnan(agua)) snprintf(t2, sizeof(t2), "   --"); else snprintf(t2, sizeof(t2), "%5.1f", agua);
-        snprintf(a, sizeof(a), "Blq%s Ag%s", t1, t2);
-      }
-      snprintf(b, sizeof(b), "Roc%5.1f Hum%3.0f%%", rocio, hum);
-      break;
-    case 1:                                       // el uso de las celdas
-      snprintf(a, sizeof(a), "Uso celdas (h)");
-      snprintf(b, sizeof(b), "A%6.2f B%6.2f", msA / 3600000.0f, msB / 3600000.0f);
-      break;
-    case 2:                                       // la red
-      if (WiFi.status() == WL_CONNECTED) {
-        snprintf(a, sizeof(a), "WiFi%4ddBm %s", (int)WiFi.RSSI(),
-                 (firebaseIniciado && Firebase.ready()) ? "FB" : "--");
-        snprintf(b, sizeof(b), "%s", WiFi.localIP().toString().c_str());
-      } else {
-        snprintf(a, sizeof(a), "Sin WiFi. Red:");
-        snprintf(b, sizeof(b), "ESP32_Emilio");
-      }
-      break;
-    default:
-      snprintf(a, sizeof(a), "** ALERTA **");
-      if (s.alerta == A_SENSOR)
-        snprintf(b, sizeof(b), "Falla:%s%s%s", (s.fallas & 2) ? " BLQ" : "",
-                 (s.fallas & 4) ? " AGU" : "", (s.fallas & 1) ? " CAM" : "");
-      else
-        snprintf(b, sizeof(b), "%.16s", s.alerta == A_CONGELA ? "Bloque congelado" : "Sin hielo/bomba");
-      break;
-  }
-  lcd.clear();
-  lcd.setCursor(0, 0); lcd.print(a);
-  lcd.setCursor(0, 1); lcd.print(b);
-}
-
-/* ---------------------------------------------------------------------------
- * OLED 0.96": lo que decide el control. Va en su propio bus I2C (Wire1, GPIO 16 y 17).
- *
- *   N2 28.3 C     A B ~      <- nivel y camara grandes; A, B y bomba en negativo si encienden
- *                 ^ obj28    <- tendencia (sube, baja, estable) y objetivo
- *   [grafica de la camara, ultimos ~4 min, con el objetivo punteado]
- *   Sobre objetivo           <- motivo de la decision (parpadea si hay alerta)
- *
- * Si no esta conectada, el resto del programa sigue igual.
- * ------------------------------------------------------------------------- */
-#define HIST_N 128                     // una muestra cada 2 s = 4 min 16 s en pantalla
-float histCam[HIST_N];
-uint8_t histTotal = 0, histSig = 0;
-
-void iniciarOled() {
-  Wire1.begin(OLED_SDA, OLED_SCL, 400000);   // la OLED aguanta 400 kHz: dibuja en ~25 ms
-  const uint8_t direcciones[] = { 0x3C, 0x3D };   // 0x78 y 0x7A en la placa
-  for (uint8_t dir : direcciones) {
-    Wire1.beginTransmission(dir);
-    if (Wire1.endTransmission() == 0 && oled.begin(SSD1306_SWITCHCAPVCC, dir, true, false)) {
-      hayOled = true;
-      Serial.printf("OLED detectada en 0x%02X\n", dir);
-      break;
-    }
-  }
-  if (!hayOled) {
-    Serial.println("[!] No respondio la OLED. El sistema sigue con la LCD.");
-    return;
-  }
-  oled.cp437(true);                    // para usar el signo de grado y las flechas
-  oled.clearDisplay();
-  oled.setTextColor(SSD1306_WHITE);
-  oled.setTextSize(2); oled.setCursor(22, 18); oled.print("FROSTER");
-  oled.setTextSize(1); oled.setCursor(28, 44); oled.print("iniciando...");
-  oled.display();
-}
-
-void registrarHistorial(float cam) {
-  static uint32_t t = 0;
-  if (isnan(cam) || millis() - t < 2000UL) return;
-  t = millis();
-  histCam[histSig] = cam;
-  histSig = (histSig + 1) % HIST_N;
-  if (histTotal < HIST_N) histTotal++;
-}
-
-static void indicador(int16_t x, char letra, bool encendido) {
-  if (encendido) {
-    oled.fillRect(x - 1, 0, 8, 8, SSD1306_WHITE);
-    oled.setTextColor(SSD1306_BLACK);
-  } else {
-    oled.setTextColor(SSD1306_WHITE);
-  }
-  oled.setCursor(x, 0);
-  oled.write(letra);
-  oled.setTextColor(SSD1306_WHITE);
-}
-
-void pantallaOled(const Salidas &s, const Entradas &o, float cam) {
-  if (!hayOled) return;
-  char b[32];
-  const uint8_t nivel = s.nivel ? s.nivel : 1;
-  oled.clearDisplay();
-  oled.setTextColor(SSD1306_WHITE);
-
-  // ---- encabezado
-  oled.setTextSize(2);
-  oled.setCursor(0, 0);
-  if (isnan(cam)) snprintf(b, sizeof(b), "N%u --.-", nivel);
-  else            snprintf(b, sizeof(b), "N%u %4.1f", nivel, cam);
-  oled.print(b);
-  oled.setTextSize(1);
-  oled.setCursor(86, 0); oled.write(0xF8); oled.print("C");
-  indicador(100, 'A', s.celdaA);
-  indicador(110, 'B', s.celdaB);
-  indicador(120, '~', s.bomba);
-  oled.setCursor(86, 8);
-  oled.write(s.pendiente > 0.15f ? 0x18 : (s.pendiente < -0.15f ? 0x19 : '='));
-  snprintf(b, sizeof(b), "obj%2.0f", o.setpoint);
-  oled.setCursor(98, 8); oled.print(b);
-
-  // ---- grafica de la camara
-  const int16_t G0 = 18, GH = 36;
-  if (histTotal >= 2) {
-    float mn = o.setpoint, mx = o.setpoint;
-    for (uint8_t i = 0; i < histTotal; i++) {
-      float v = histCam[(histSig + HIST_N - histTotal + i) % HIST_N];
-      if (v < mn) mn = v;
-      if (v > mx) mx = v;
-    }
-    if (mx - mn < 2.0f) { float c = (mx + mn) / 2; mn = c - 1.0f; mx = c + 1.0f; }
-    auto Y = [&](float v) -> int16_t {
-      return G0 + GH - 1 - (int16_t)lroundf((v - mn) / (mx - mn) * (GH - 1));
-    };
-    int16_t yObj = Y(o.setpoint);
-    for (int16_t x = 0; x < 128; x += 4) oled.drawFastHLine(x, yObj, 2, SSD1306_WHITE);
-    int16_t x0 = 128 - histTotal;
-    float previo = histCam[(histSig + HIST_N - histTotal) % HIST_N];
-    for (uint8_t i = 1; i < histTotal; i++) {
-      float v = histCam[(histSig + HIST_N - histTotal + i) % HIST_N];
-      oled.drawLine(x0 + i - 1, Y(previo), x0 + i, Y(v), SSD1306_WHITE);
-      previo = v;
-    }
-    oled.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
-    snprintf(b, sizeof(b), "%.1f", mx); oled.setCursor(0, G0);          oled.print(b);
-    snprintf(b, sizeof(b), "%.1f", mn); oled.setCursor(0, G0 + GH - 8); oled.print(b);
-    oled.setTextColor(SSD1306_WHITE);
-  } else {
-    oled.setCursor(10, 32); oled.print("juntando datos...");
-  }
-
-  // ---- renglon de abajo: motivo de la decision, o la alerta parpadeando
-  if (s.alerta != A_NINGUNA) {
-    if ((millis() / 1000) % 2) {
-      oled.fillRect(0, 56, 128, 8, SSD1306_WHITE);
-      oled.setTextColor(SSD1306_BLACK);
-    }
-    snprintf(b, sizeof(b), "! %s", MOTIVOS[s.motivo]);
-    oled.setCursor(2, 56); oled.print(b);
-    oled.setTextColor(SSD1306_WHITE);
-  } else {
-    oled.setCursor(0, 56); oled.print(MOTIVOS[s.motivo]);
-  }
-  oled.display();
-}
-
-/* ---------------------------------------------------------------------------
- * SENALES: LED RGB y buzzer pasivo
- * El LED muestra el estado todo el tiempo. El buzzer suena solo en los cambios:
- * una vez por cambio de nivel, y las alertas como maximo una vez por minuto.
- * Las melodias se tocan sin bloquear: el loop avanza una nota cuando toca.
- * ------------------------------------------------------------------------- */
-const Nota MEL_ARRANQUE[]  = { {784,120},{0,40},{988,120},{0,40},{1319,220},{0,0} };
-const Nota MEL_SUBE_2[]    = { {880,120},{0,40},{1175,160},{0,0} };
-const Nota MEL_SUBE_3[]    = { {880,110},{0,30},{1175,110},{0,30},{1568,180},{0,0} };
-const Nota MEL_BAJA[]      = { {1175,140},{0,40},{784,220},{0,0} };
-const Nota MEL_CONGELA[]   = { {2093,90},{0,90},{2093,90},{0,90},{2093,90},{0,0} };
-const Nota MEL_SIN_HIELO[] = { {1047,400},{0,150},{1047,400},{0,0} };
-const Nota MEL_SENSOR[]    = { {330,250},{0,150},{330,250},{0,150},{330,250},{0,0} };
-
-const Nota *melodia = nullptr;
-uint8_t notaIdx = 0;
-uint32_t tNota = 0;
-
-void tocar(const Nota *m) { melodia = m; notaIdx = 0; tNota = 0; }
-
-void silencio() {
-#if BUZZER_ACTIVO_BAJO
-  ledcWrite(PIN_BUZZER, (1 << 10) - 1);     // 100 %: salida en ALTO = modulo sin corriente
-#else
-  ledcWriteTone(PIN_BUZZER, 0);             // salida en BAJO
-#endif
-}
-
-void atenderBuzzer() {
-  if (!melodia) return;
-  uint32_t ahora = millis();
-  if (tNota != 0) {
-    if (ahora - tNota < melodia[notaIdx].ms) return;   // la nota sigue sonando
-    notaIdx++;
-  }
-  const Nota &n = melodia[notaIdx];
-  if (n.ms == 0) { silencio(); melodia = nullptr; return; }
-  if (n.hz) ledcWriteTone(PIN_BUZZER, n.hz); else silencio();
-  tNota = ahora ? ahora : 1;
-}
-
-void color(uint8_t r, uint8_t g, uint8_t b) {
-#if LED_ANODO_COMUN
-  r = 255 - r; g = 255 - g; b = 255 - b;    // en anodo comun, ALTO = apagado
-#endif
-  ledcWrite(PIN_LED_R, r);
-  ledcWrite(PIN_LED_G, g);
-  ledcWrite(PIN_LED_B, b);
-}
-
-void iniciarSenales() {
-  ledcAttach(PIN_LED_R, 5000, 8);
-  ledcAttach(PIN_LED_G, 5000, 8);
-  ledcAttach(PIN_LED_B, 5000, 8);
-  ledcAttach(PIN_BUZZER, 2000, 10);
-  silencio();
-  color(0, 0, 255);                         // azul: arrancando
-}
-
-void gestionarSenales(const Salidas &s) {
-  static bool saludo = false;
-  static uint8_t nivelPrev = 1, alertaPrev = A_NINGUNA;
-  static uint32_t tAlerta = 0;
-  const uint32_t ahora = millis();
-  const bool encendido = (ahora / 400) % 2;  // parpadeo de 0.4 s
-  const uint8_t nivel = s.nivel ? s.nivel : 1;  // 0 = el control aun no decide
-
-  // ---- LED: un color por estado
-  if (ahora < 10000UL)               encendido ? color(0, 0, 255)   : color(0, 0, 0);
-  else if (s.alerta == A_CONGELA)    encendido ? color(160, 0, 255) : color(0, 0, 0);
-  else if (s.alerta == A_SIN_HIELO)  encendido ? color(255, 80, 0)  : color(0, 0, 0);
-  else if (s.alerta == A_SENSOR)     encendido ? color(255, 0, 0)   : color(0, 0, 0);
-  else if (s.motivo == M_PRECIRC || s.motivo == M_ESPERA) color(255, 180, 0);
-  else if (nivel == 3)               color(0, 0, 255);
-  else if (nivel == 2)               color(0, 200, 200);
-  else                               color(0, 255, 0);
-
-  // ---- Buzzer: un sonido por evento
-  if (!saludo) {
-    if (ahora > 1500UL) { saludo = true; tocar(MEL_ARRANQUE); }
-  } else if (s.alerta != A_NINGUNA) {
-    if (s.alerta != alertaPrev || ahora - tAlerta >= 60000UL) {
-      tAlerta = ahora;
-      tocar(s.alerta == A_CONGELA ? MEL_CONGELA : s.alerta == A_SIN_HIELO ? MEL_SIN_HIELO : MEL_SENSOR);
-    }
-  } else if (nivel != nivelPrev) {
-    tocar(nivel > nivelPrev ? (nivel == 3 ? MEL_SUBE_3 : MEL_SUBE_2) : MEL_BAJA);
-  }
-  alertaPrev = s.alerta;
-  nivelPrev = nivel;
-  atenderBuzzer();
-}
-
 /* =========================================================================
  * ARRANQUE Y BUCLE
  * ========================================================================= */
@@ -920,6 +475,8 @@ void setup() {
   pinMode(PIN_CELDA_A, OUTPUT); digitalWrite(PIN_CELDA_A, LOW);
   pinMode(PIN_CELDA_B, OUTPUT); digitalWrite(PIN_CELDA_B, LOW);
   pinMode(PIN_BOMBA,   OUTPUT); digitalWrite(PIN_BOMBA,   LOW);
+  ledcAttach(PIN_BOMBA, PWM_VENT_HZ, 8);          // bomba y ventiladores con PWM
+  ledcWrite(PIN_BOMBA, 0);
   iniciarSenales();
 
   Serial.begin(115200);
@@ -951,6 +508,7 @@ void setup() {
 
   /* WiFiManager sin bloquear: si no conoce la red, abre el punto de acceso
      "ESP32_Emilio" y el resto del programa sigue trabajando. */
+  WiFi.setAutoReconnect(true);
   wm.setConfigPortalBlocking(false);
   wm.setConnectTimeout(20);
   if (wm.autoConnect("ESP32_Emilio")) {
@@ -967,6 +525,7 @@ void loop() {
   uint32_t ahora = millis();
 
   wm.process();                                   // atiende el portal si esta abierto
+  vigilarWiFi();                                  // reconexion autonoma
   if (WiFi.status() == WL_CONNECTED && !firebaseIniciado) iniciarFirebase();
 
   Salidas s; Entradas o; float cam, tubo, agua, hum, rocio; uint32_t msA, msB;
@@ -1005,10 +564,9 @@ void loop() {
 
   registrarHistorial(cam);
   static uint32_t tOled = 0;
-  if (ahora - tOled >= 1000UL && melodia == nullptr) {   // no interrumpir una melodia:
+  if (ahora - tOled >= 1000UL && !sonando()) {           // no interrumpir una melodia:
     tOled = ahora;                                        // dibujar tarda ~0.1 s
     pantallaOled(s, o, cam);
   }
-  gestionarSenales(s);
-  delay(10);                                      // 10 ms: notas del buzzer a tiempo
+  gestionarSenales(s);                            // sin delay(): el loop nunca se detiene
 }

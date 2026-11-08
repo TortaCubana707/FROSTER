@@ -5,8 +5,7 @@ telemetría en Firebase, tablero web y app Android. Se prueba en una **cámara d
 un foco incandescente amarillo simula el calor de una computadora y el módulo tiene que sacarlo.
 
 > Estado al 29 oct 2026: firmware cargado en el ESP32 y probado con el hardware real. Se conecta
-> al Wi-Fi, publica en Firebase, la LCD, la OLED y el LED RGB funcionan (al buzzer le falta terminar
-> sus conexiones), y en modo manual las
+> al Wi-Fi, publica en Firebase, la LCD, la OLED, el LED RGB y el buzzer funcionan, y en modo manual las
 > celdas enfriaron la cámara 0.8 °C en 2.5 min. En la computadora pasan 52 verificaciones de
 > control y las de LED y buzzer. Fotos del prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
 > [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
@@ -40,6 +39,13 @@ La guía para armarlo paso a paso está en
 El control decide con la temperatura **prevista a 2 minutos**, exige que un cambio se sostenga
 20 s, respeta 60 s mínimos encendida y apagada por celda, reparte el desgaste entre las dos
 celdas y ensancha solo su banda si detecta que está ciclando.
+
+### Firmware sin bloqueos
+
+No hay ni un `delay()`: el `loop()` reparte su trabajo con `millis()` y el control corre en su
+propia tarea de FreeRTOS cada 2 s. Si se cae el WiFi, `vigilarWiFi()` lo reintenta cada 10 s sin
+detener nada y cuenta las caídas (`estado/caidas_wifi`). Cada sensor tiene su ajuste de calibración
+(`CAL_CAMARA_C`, `CAL_HUMEDAD`, `CAL_BLOQUE_C`).
 
 ### Protecciones (por encima de cualquier nivel)
 
@@ -107,7 +113,7 @@ así que la celda va directo a OUT+ / OUT− para que funcione el límite de 3 A
 | 16 / 17 | Pantalla OLED, en su propio bus I2C (SDA / SCL) |
 | 25 | D4184 #1 — celda A |
 | 26 | D4184 #2 — celda B |
-| 27 | D4184 #3 — bomba y ventiladores |
+| 27 | D4184 #3 — bomba y ventiladores, con PWM a 1 kHz (70 / 86 / 100 % según el nivel) |
 | 32 / 33 / 13 | LED RGB (R / G / B) |
 | 23 | Buzzer pasivo de 3 pines |
 
@@ -207,8 +213,8 @@ se quedan en la computadora.
 
 | Archivo | Estado |
 |---|---|
-| `firmware/FROSTER_Control/FROSTER_Control.ino` | **Vigente** |
-| `FROSTER_Control_CODIGO.txt` | **Vigente**: el mismo código, para copiar y pegar |
+| `firmware/FROSTER_Control/` | **Vigente**, en 5 pestañas: `FROSTER_Control.ino` (configuración, lógica, setup y loop), `control.ino`, `nube.ino`, `pantallas.ino` y `senales.ino` |
+| `FROSTER_Control_CODIGO.txt` | **Vigente**: las 5 pestañas en un solo archivo, para leerlo de corrido |
 | `firmware/FROSTER_Control/pruebas/probar.sh` | **Vigente**: prueba la lógica y las señales en la PC |
 | `FROSTER_Guia_Conexiones.md` | **Vigente**: armado paso a paso |
 | `diagramas/FROSTER_conexiones_control.png` y `_potencia.png` | **Vigentes**: diagramas de conexión (los `.excalidraw` se editan en excalidraw.com) |
