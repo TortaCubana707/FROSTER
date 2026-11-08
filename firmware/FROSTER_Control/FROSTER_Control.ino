@@ -106,7 +106,7 @@
 #define PIN_FUGA     34    // AO del sensor de humedad junto a la bomba (solo entrada, ADC1)
 /* 1 = el sensor de fuga esta conectado. Con 0 no se lee: un GPIO34 al aire marca "mojado"
    y apagaria todo. */
-#define SENSOR_FUGA  0
+#define SENSOR_FUGA  1
 #define OLED_SDA     16    // segundo bus I2C (Wire1), solo para la OLED
 #define OLED_SCL     17
 
@@ -128,8 +128,8 @@
 
 /* Calibracion del sensor de fuga: lectura del ADC (0 a 4095) con el sensor seco y con
    las puntas en agua. Se miden con el Monitor Serie y se escriben aqui. */
-#define FUGA_SECO_RAW    4095
-#define FUGA_MOJADO_RAW  1500
+#define FUGA_SECO_RAW    4095     // medido el 8 nov 2026: seco = 4095
+#define FUGA_MOJADO_RAW  1650     // medido el 8 nov 2026: 1643 a 1782 con las puntas en agua
 
 /* Tipo de LED RGB. 0 = catodo comun (pata larga a G)
                     1 = anodo comun  (pata larga al pin 3.3V) */
@@ -487,6 +487,7 @@ Entradas gOrdenes = { NAN, NAN, NAN, 28.0f, MODO_AUTO, false, false, false, SENS
 Salidas  gSalidas = {};
 float gCam = NAN, gTubo = NAN, gAgua = NAN, gHum = NAN, gRocio = NAN;
 float gFugaPct = NAN;                 // humedad junto a la bomba, 0 a 100 % (NAN sin sensor)
+int   gFugaRaw = -1;                  // lectura cruda del ADC, para calibrar (-1 sin sensor)
 uint32_t gMsOnA = 0, gMsOnB = 0;      // tiempo encendida de cada celda (para la LCD)
 Control  ctl;      // solo lo toca la tarea de control
 
@@ -597,9 +598,9 @@ void loop() {
 
   if (ahora - tSerie >= 2000UL) {
     tSerie = ahora;
-    Serial.printf("N%d | cam %.1f (%+.2f/min, prev %.1f) obj %.1f | bloque %.1f fuga %.0f%% | "
+    Serial.printf("N%d | cam %.1f (%+.2f/min, prev %.1f) obj %.1f | bloque %.1f fuga %.0f%% (adc %d) | "
                   "A:%s B:%s bomba:%s | %s%s%s\n",
-                  s.nivel, cam, s.pendiente, s.prediccion, o.setpoint, tubo, gFugaPct,
+                  s.nivel, cam, s.pendiente, s.prediccion, o.setpoint, tubo, gFugaPct, gFugaRaw,
                   s.celdaA ? "ON" : "--", s.celdaB ? "ON" : "--", s.bomba ? "ON" : "--",
                   MOTIVOS[s.motivo], s.alerta ? " | ALERTA: " : "", ALERTAS[s.alerta]);
   }

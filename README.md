@@ -4,10 +4,11 @@ Módulo de enfriamiento con dos celdas Peltier, controlado por un ESP32 en tres 
 telemetría en Firebase, tablero web y app Android. Se prueba en una **cámara de pruebas**:
 un foco incandescente amarillo simula el calor de una computadora y el módulo tiene que sacarlo.
 
-> Estado al 29 oct 2026: firmware cargado en el ESP32 y probado con el hardware real. Se conecta
-> al Wi-Fi, publica en Firebase, la LCD, la OLED, el LED RGB y el buzzer funcionan, y en modo manual las
-> celdas enfriaron la cámara 0.8 °C en 2.5 min. En la computadora pasan 52 verificaciones de
-> control y las de LED y buzzer. Fotos del prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
+> Estado al 8 nov 2026: firmware actual cargado y probado en la placa. Se conecta solo al Wi-Fi,
+> publica en Firebase, la LCD, la OLED, el LED RGB y el buzzer funcionan, los ventiladores cambian de
+> velocidad con el nivel (PWM) y el sensor de fuga apaga todo a los 4 s de mojarse y lo reanuda al
+> secarse. En la computadora pasan 63 verificaciones de control y las de LED y buzzer. Fotos del
+> prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
 > [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
 
 **Equipo:** Emilio Garduño Servin, Kevin Alvarez De Jesus, Valeria Monserrat Benitez Alvarez y

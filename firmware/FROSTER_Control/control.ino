@@ -16,7 +16,8 @@ static float calibrar(float v, float ajuste) { return isnan(v) ? v : v + ajuste;
 /* Humedad junto a la bomba: 0 % seco, 100 % mojado. NAN si no hay sensor. */
 float leerFuga() {
 #if SENSOR_FUGA
-  const float pct = (FUGA_SECO_RAW - analogRead(PIN_FUGA)) * 100.0f
+  gFugaRaw = analogRead(PIN_FUGA);
+  const float pct = (FUGA_SECO_RAW - gFugaRaw) * 100.0f
                     / (float)(FUGA_SECO_RAW - FUGA_MOJADO_RAW);
   return constrain(pct, 0.0f, 100.0f);
 #else
