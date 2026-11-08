@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">FROSTER</string>
+    <string name="subtitulo">Enfriamiento inteligente con ESP32</string>
+    <string name="correo">Correo</string>
+    <string name="contrasena">Contraseña</string>
+    <string name="entrar">Entrar</string>
+    <string name="falta_correo_clave">Escribe el correo y la contraseña</string>
+    <string name="no_se_pudo_entrar">No se pudo entrar: %1$s</string>
+    <string name="nivel">Nivel</string>
+    <string name="camara">Cámara</string>
+    <string name="bloque">Bloque frío</string>
+    <string name="objetivo">Objetivo</string>
+    <string name="humedad_pct">Humedad %1$.0f %%</string>
+    <string name="fuga_pct">Fuga %1$.0f %%</string>
+    <string name="en_vivo">EN VIVO</string>
+    <string name="sin_datos_esp32">SIN DATOS DEL ESP32</string>
+    <string name="alerta_froster">Alerta de FROSTER</string>
+    <string name="alerta_resuelta">Alerta resuelta</string>
+    <string name="entendido">Entendido</string>
+    <string name="comando_confirmado">Objetivo %1$.1f °C confirmado en %2$d ms</string>
+    <string name="historial">Historial</string>
+    <string name="salir">Salir</string>
+    <string name="eventos">Eventos</string>
+    <string name="lecturas">Lecturas</string>
+    <string name="historial_vacio">Todavía no hay registros guardados en el teléfono</string>
+    <string name="canal_alertas">Alertas de FROSTER</string>
+    <string name="canal_alertas_desc">Congelamiento, falta de hielo, falla de sensor y fugas</string>
+</resources>

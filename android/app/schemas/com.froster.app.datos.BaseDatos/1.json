@@ -1,0 +1,132 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "4f14b62cb8be4db8aa48ac115f66f821",
+    "entities": [
+      {
+        "tableName": "lecturas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ts` INTEGER NOT NULL, `ambiente` REAL, `humedad` REAL, `placaFria` REAL, `fugaPct` REAL, `nivel` INTEGER NOT NULL, `alertaId` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ts",
+            "columnName": "ts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ambiente",
+            "columnName": "ambiente",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "humedad",
+            "columnName": "humedad",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "placaFria",
+            "columnName": "placaFria",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fugaPct",
+            "columnName": "fugaPct",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nivel",
+            "columnName": "nivel",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alertaId",
+            "columnName": "alertaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "eventos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`clave` TEXT NOT NULL, `tipo` TEXT, `texto` TEXT, `nivel` INTEGER NOT NULL, `camara` REAL, `setpoint` REAL, `ts` INTEGER NOT NULL, PRIMARY KEY(`clave`))",
+        "fields": [
+          {
+            "fieldPath": "clave",
+            "columnName": "clave",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "texto",
+            "columnName": "texto",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nivel",
+            "columnName": "nivel",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "camara",
+            "columnName": "camara",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "setpoint",
+            "columnName": "setpoint",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "ts",
+            "columnName": "ts",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "clave"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4f14b62cb8be4db8aa48ac115f66f821')"
+    ]
+  }
+}

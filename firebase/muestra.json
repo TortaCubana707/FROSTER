@@ -1,0 +1,28 @@
+{
+  "froster": {
+    "lecturas": {
+      "ambiente": 23.4, "humedad": 55, "punto_rocio": 13.9, "placa_fria": 21.8,
+      "fuga_pct": 0, "pendiente": 0.14, "prediccion": 23.7, "ts": 1794148800000
+    },
+    "estado": {
+      "nivel": 2, "celda_a": true, "celda_b": false, "bomba": true, "pwm_fans": 86,
+      "setpoint": 21, "modo": "auto", "motivo": "Sobre objetivo", "alerta": "", "alerta_id": 0,
+      "condensa": false, "carga_alta": false, "uptime_s": 186
+    },
+    "config": {
+      "setpoint": 21, "modo": "auto", "manual_a": false, "manual_b": false,
+      "carga_alta": false, "cmd_id": 1794148790000
+    },
+    "ack": { "cmd_id": 1794148790000, "recibido_ms": 1794148790180, "aplicado_en_ms": 12 },
+    "dispositivo": {
+      "ip": "192.168.100.24", "rssi": -48, "caidas_wifi": 0, "firmware": "2.0-e2",
+      "ultima_conexion": 1794148801234
+    },
+    "eventos": {
+      "-Ok3aX1": { "tipo": "nivel", "texto": "Nivel 2: Sobre objetivo", "nivel": 2,
+                   "camara": 23.1, "setpoint": 21, "ts": 1794148760000 },
+      "-Ok3aX9": { "tipo": "alerta", "texto": "Fuga de agua junto a la bomba", "nivel": 1,
+                   "camara": 23.4, "setpoint": 21, "ts": 1794148784000 }
+    }
+  }
+}

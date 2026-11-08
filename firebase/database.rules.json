@@ -1,0 +1,60 @@
+{
+  "rules": {
+    "froster": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "lecturas": {
+        "$clave": { ".validate": "newData.isNumber()" }
+      },
+      "estado": {
+        "nivel":      { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3" },
+        "celda_a":    { ".validate": "newData.isBoolean()" },
+        "celda_b":    { ".validate": "newData.isBoolean()" },
+        "bomba":      { ".validate": "newData.isBoolean()" },
+        "pwm_fans":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+        "setpoint":   { ".validate": "newData.isNumber()" },
+        "modo":       { ".validate": "newData.isString()" },
+        "motivo":     { ".validate": "newData.isString()" },
+        "alerta":     { ".validate": "newData.isString()" },
+        "alerta_id":  { ".validate": "newData.isNumber()" },
+        "condensa":   { ".validate": "newData.isBoolean()" },
+        "carga_alta": { ".validate": "newData.isBoolean()" },
+        "uptime_s":   { ".validate": "newData.isNumber()" },
+        "$otra":      { ".validate": false }
+      },
+      "config": {
+        "setpoint":   { ".validate": "newData.isNumber() && newData.val() >= 15 && newData.val() <= 40" },
+        "modo":       { ".validate": "newData.isString() && newData.val().matches(/^(auto|manual|off)$/)" },
+        "manual_a":   { ".validate": "newData.isBoolean()" },
+        "manual_b":   { ".validate": "newData.isBoolean()" },
+        "carga_alta": { ".validate": "newData.isBoolean()" },
+        "cmd_id":     { ".validate": "newData.isNumber()" },
+        "$otra":      { ".validate": false }
+      },
+      "ack": {
+        "$clave": { ".validate": "newData.isNumber()" }
+      },
+      "dispositivo": {
+        "ip":              { ".validate": "newData.isString()" },
+        "firmware":        { ".validate": "newData.isString()" },
+        "rssi":            { ".validate": "newData.isNumber()" },
+        "caidas_wifi":     { ".validate": "newData.isNumber()" },
+        "ultima_conexion": { ".validate": "newData.isNumber()" },
+        "$otra":           { ".validate": false }
+      },
+      "eventos": {
+        ".indexOn": ["ts"],
+        "$evento": {
+          ".validate": "newData.hasChildren(['tipo', 'texto', 'ts'])",
+          "tipo":     { ".validate": "newData.isString() && newData.val().matches(/^(nivel|alerta|pico)$/)" },
+          "texto":    { ".validate": "newData.isString()" },
+          "nivel":    { ".validate": "newData.isNumber()" },
+          "camara":   { ".validate": "newData.isNumber()" },
+          "setpoint": { ".validate": "newData.isNumber()" },
+          "ts":       { ".validate": "newData.isNumber()" },
+          "$otra":    { ".validate": false }
+        }
+      }
+    }
+  }
+}

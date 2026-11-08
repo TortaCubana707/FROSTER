@@ -14,6 +14,9 @@ un foco incandescente amarillo simula el calor de una computadora y el módulo t
 **Equipo:** Emilio Garduño Servin, Kevin Alvarez De Jesus, Valeria Monserrat Benitez Alvarez y
 Jesus Emmanuel Garcia Rodriguez.
 
+**Repositorio del equipo:** firmware (`firmware/`), app Android (`android/`), tablero React
+(`web/`) y documentación (`docs/`). Cómo trabajar en él: [docs/GUIA_EQUIPO.md](docs/GUIA_EQUIPO.md).
+
 La guía para armarlo paso a paso está en
 [FROSTER_Guia_Conexiones.md](FROSTER_Guia_Conexiones.md).
 
@@ -195,29 +198,13 @@ Prueba real (Poco F6 en AnTuTu, cargando): la batería subió +2.5 °C con el m�
 
 ## Firebase
 
-Proyecto `sqliteemi`, cuenta del ESP32 `esp32@correo.com`.
+Todo vive bajo `froster/` en el proyecto `sqliteemi`: `lecturas/`, `estado/`, `config/`, `ack/`,
+`dispositivo/` y `eventos/`. Las rutas, tipos y la forma de mandar comandos están en
+[docs/CONTRATO_FIREBASE.md](docs/CONTRATO_FIREBASE.md); las reglas con validación de tipos, en
+[firebase/database.rules.json](firebase/database.rules.json).
 
-```
-tarjeta/refrigeracion/
-  lecturas/   ambiente, humedad, punto_rocio, placa_fria, disipador_a, pendiente, prediccion
-  estado/     nivel, celda_a, celda_b, bomba, motivo, alerta, setpoint, modo, online
-  config/     setpoint (15–40), modo (auto | manual | off), manual_a, manual_b, carga_alta
-```
-
-El tablero (`dashboard/index.html`) y la app Android (CRUDSQLITE1, `RefrigeracionActivity`) leen
-estas mismas rutas.
-
-### Tablero en la computadora
-
-`dashboard/abrir_tablero.sh` lo sirve en `http://localhost:8080` y abre el navegador (Firebase
-no deja iniciar sesión desde `file://`). Se entra con la cuenta del ESP32; la contraseña no se
-guarda. Muestra nivel, cámara con tendencia y predicción, objetivo (con − / +), bloque frío y
-rocío, qué equipos están encendidos, el motivo de la decisión, la alerta y una gráfica de los
-últimos 30 min. Dice **EN VIVO** solo si `uptime_s` cambió en los últimos 15 s. Con
-`index.html?demo` muestra datos simulados, marcados como DEMO, para revisar el diseño.
-La versión anterior quedó en `dashboard/index_v1_respaldo.html`.
-
----
+Los comandos llegan al ESP32 por un *stream* (al instante) y cada uno se confirma en `ack/`; las
+lecturas y el estado se suben solo cuando cambian, más un latido cada 10 s.
 
 ## Archivos
 

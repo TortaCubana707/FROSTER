@@ -1,0 +1,7 @@
+# Copia este archivo como local.properties (Android Studio agrega sdk.dir solo).
+# Los datos de Firebase ya tienen valores por defecto en app/build.gradle; aquí solo se cambian
+# si el proyecto de Firebase cambia. La contraseña NUNCA va en el código: se escribe en la app.
+# FIREBASE_API_KEY=
+# FIREBASE_APP_ID=
+# FIREBASE_DATABASE_URL=
+# FIREBASE_PROJECT_ID=

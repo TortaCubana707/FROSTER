@@ -1,0 +1,36 @@
+:root {
+  --fondo: #0d1117; --tarjeta: #161b22; --borde: #30363d; --texto: #e6edf3; --tenue: #8b949e;
+  --frio: #58a6ff; --verde: #3fb950; --ambar: #d29922; --rojo: #f85149;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.45 system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+header button { margin-left: auto; }
+h1 { margin: 0; font-size: 26px; }
+h1 span { color: var(--frio); }
+button { font: inherit; color: var(--texto); background: var(--tarjeta); border: 1px solid var(--borde);
+  border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+button.primario { background: var(--frio); border-color: var(--frio); color: #fff; width: 100%; margin-top: 14px; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; }
+.rejilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.etiqueta { color: var(--tenue); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.valor { font-size: 32px; font-weight: 700; margin-top: 4px; }
+.tenue { color: var(--tenue); font-size: 13px; }
+.fila { display: flex; gap: 8px; margin-top: 8px; }
+.insignia { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid; }
+.insignia.vivo { color: var(--verde); }
+.insignia.viejo { color: var(--ambar); }
+.alerta { margin-bottom: 14px; padding: 12px; border-radius: 10px; font-weight: 700;
+  color: var(--rojo); border: 1px solid var(--rojo); animation: parpadeo 1s infinite; }
+@keyframes parpadeo { 50% { opacity: .55; } }
+.acceso { max-width: 380px; margin: 12vh auto 0; }
+.acceso label { display: block; margin-top: 12px; color: var(--tenue); font-size: 13px; }
+.acceso input { width: 100%; margin-top: 6px; padding: 9px; border-radius: 8px; border: 1px solid var(--borde);
+  background: var(--fondo); color: var(--texto); font: inherit; }
+.error { color: var(--rojo); font-size: 13px; }
+.avisos { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; max-width: min(360px, calc(100vw - 32px)); }
+.aviso { padding: 10px 14px; border-radius: 10px; background: var(--tarjeta); border: 1px solid var(--borde); }
+.aviso.ok { border-color: var(--verde); }
+.aviso.grave { border-color: var(--rojo); color: var(--rojo); }
