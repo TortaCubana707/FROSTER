@@ -16,4 +16,8 @@ public interface LecturaDao {
 
     @Query("SELECT COUNT(*) FROM lecturas")
     int contar();
+
+    /** Picos de temperatura excedidos: lecturas en que la cámara superó el objetivo del usuario. */
+    @Query("SELECT * FROM lecturas WHERE excede = 1 ORDER BY ts DESC LIMIT :limite")
+    List<Lectura> excedidas(int limite);
 }

@@ -12,6 +12,7 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 /**
  * Todo el acceso a datos de la app: Firebase en tiempo real y Room en el teléfono.
@@ -46,6 +48,7 @@ public class Repositorio {
     private final Map<Long, Pendiente> pendientes = new HashMap<>();
     private long ultimaLecturaGuardada = 0;
     private int nivelActual = 0, alertaActual = 0;
+    private Double objetivoActual;
 
     private static class Pendiente {
         final long inicio = SystemClock.elapsedRealtime();
@@ -66,15 +69,36 @@ public class Repositorio {
 
     // ------------------------------------------------------------ tiempo real
 
-    /** Escucha una ruta. Devuelve el oyente para quitarlo con dejarDeEscuchar(). */
-    public ValueEventListener escuchar(String ruta, AlCambiar alCambiar) {
-        ValueEventListener o = oyente(alCambiar);
-        firebase.getReference(ruta).addValueEventListener(o);
-        return o;
+    /**
+     * Una escucha activa sobre Firebase. La pantalla la cancela en onStop() para no gastar
+     * datos ni batería mientras no se ve.
+     */
+    public static final class Suscripcion {
+        private final Query consulta;
+        private final ValueEventListener oyente;
+
+        private Suscripcion(Query consulta, ValueEventListener oyente) {
+            this.consulta = consulta;
+            this.oyente = oyente;
+        }
+
+        public void cancelar() { consulta.removeEventListener(oyente); }
     }
 
-    public void dejarDeEscuchar(String ruta, ValueEventListener oyente) {
-        firebase.getReference(ruta).removeEventListener(oyente);
+    /** Escucha una ruta completa (lecturas, estado, config, dispositivo o .info/connected). */
+    public Suscripcion escuchar(String ruta, AlCambiar alCambiar) {
+        return suscribir(firebase.getReference(ruta), alCambiar);
+    }
+
+    /** Escucha solo los últimos eventos que agrega el ESP32 (no descarga la lista completa). */
+    public Suscripcion escucharUltimosEventos(int limite, AlCambiar alCambiar) {
+        return suscribir(firebase.getReference(Contrato.EVENTOS).orderByKey().limitToLast(limite), alCambiar);
+    }
+
+    private static Suscripcion suscribir(Query consulta, AlCambiar alCambiar) {
+        ValueEventListener o = oyente(alCambiar);
+        consulta.addValueEventListener(o);
+        return new Suscripcion(consulta, o);
     }
 
     private static ValueEventListener oyente(AlCambiar alCambiar) {
@@ -128,12 +152,15 @@ public class Repositorio {
         l.fugaPct = lecturas.child("fuga_pct").getValue(Double.class);
         l.nivel = nivelActual;
         l.alertaId = alertaActual;
+        l.objetivo = objetivoActual;
+        l.excede = l.ambiente != null && objetivoActual != null && l.ambiente > objetivoActual;
         hilo.execute(() -> base.lecturas().insertar(l));
     }
 
-    public void recordarEstado(int nivel, int alertaId) {
+    public void recordarEstado(int nivel, int alertaId, Double objetivo) {
         nivelActual = nivel;
         alertaActual = alertaId;
+        if (objetivo != null) objetivoActual = objetivo;
     }
 
     private final ChildEventListener guardarEventos = new ChildEventListener() {
@@ -156,17 +183,28 @@ public class Repositorio {
         @Override public void onCancelled(@NonNull DatabaseError e) { }
     };
 
-    public void ultimasLecturas(int limite, Resultado<List<Lectura>> resultado) {
+    /** Corre una consulta de Room en el hilo aparte y entrega el resultado en el hilo principal. */
+    private <T> void consultar(Supplier<T> consulta, Resultado<T> resultado) {
         hilo.execute(() -> {
-            List<Lectura> lista = base.lecturas().ultimas(limite);
-            principal.post(() -> resultado.con(lista));
+            T valor = consulta.get();
+            principal.post(() -> resultado.con(valor));
         });
     }
 
+    public void ultimasLecturas(int limite, Resultado<List<Lectura>> resultado) {
+        consultar(() -> base.lecturas().ultimas(limite), resultado);
+    }
+
     public void ultimosEventos(int limite, Resultado<List<Evento>> resultado) {
-        hilo.execute(() -> {
-            List<Evento> lista = base.eventos().ultimos(limite);
-            principal.post(() -> resultado.con(lista));
-        });
+        consultar(() -> base.eventos().ultimos(limite), resultado);
+    }
+
+    /** Picos de temperatura excedidos guardados en el teléfono (criterio del Proyecto 1). */
+    public void picos(Resultado<List<Evento>> resultado) {
+        consultar(() -> base.eventos().picos(), resultado);
+    }
+
+    public void lecturasExcedidas(int limite, Resultado<List<Lectura>> resultado) {
+        consultar(() -> base.lecturas().excedidas(limite), resultado);
     }
 }
