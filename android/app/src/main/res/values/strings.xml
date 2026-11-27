@@ -1,0 +1,80 @@
+<resources>
+    <string name="app_name">FROSTER</string>
+    <string name="nivel_usuario">Usuario</string>
+    <string name="subtitulo">Enfriamiento inteligente con ESP32</string>
+    <string name="correo">Correo</string>
+    <string name="contrasena">Contraseña</string>
+    <string name="entrar">Entrar</string>
+    <string name="falta_correo_clave">Escribe el correo y la contraseña</string>
+    <string name="no_se_pudo_entrar">No se pudo entrar: %1$s</string>
+
+    <!-- Pantalla principal -->
+    <string name="en_vivo">EN VIVO</string>
+    <string name="sin_datos_esp32">SIN DATOS DEL ESP32</string>
+    <string name="sin_conexion">MODO OFFLINE</string>
+    <string name="sin_conexion_detalle">Modo offline: sin internet. La app sigue con los datos guardados en el teléfono</string>
+    <string name="modo_offline_titulo">FROSTER · Modo offline</string>
+    <string name="modo_offline_texto">Sin internet. Puedes seguir viendo los últimos datos y el historial guardado en el teléfono.</string>
+    <string name="conexion_recuperada">Conexión recuperada: datos en vivo otra vez</string>
+    <string name="canal_estado">Estado de la conexión</string>
+    <string name="canal_estado_desc">Aviso cuando la app entra o sale del modo offline</string>
+    <string name="accion_historial">HISTORIAL</string>
+    <string name="pico_local">Cámara %1$s sobre el objetivo de %2$s</string>
+    <string name="guardado_telefono">guardado en el teléfono</string>
+    <string name="sobre_objetivo">sobre el objetivo (%1$s)</string>
+    <string name="modo_valor">Modo %1$s</string>
+    <string name="sin_red_para_ordenes">Sin internet: la orden no se puede enviar ahora</string>
+    <string name="nivel">Nivel</string>
+    <string name="camara">Cámara</string>
+    <string name="bloque">Bloque frío</string>
+    <string name="objetivo">Objetivo</string>
+    <string name="humedad_pct">Humedad %1$.0f %%</string>
+    <string name="humedad_sin_dato">Humedad --</string>
+    <string name="fuga_pct">Fuga %1$.0f %%</string>
+    <string name="rocio">Rocío %1$.1f °C</string>
+    <string name="tendencia">%1$+.2f °C/min · %2$.1f °C en 2 min</string>
+    <string name="celda_a">Celda A</string>
+    <string name="celda_b">Celda B</string>
+    <string name="bomba">Bomba</string>
+    <string name="ventiladores">Ventiladores</string>
+    <string name="indicador">%1$s\n%2$s</string>
+    <string name="encendido">ON</string>
+    <string name="apagado">OFF</string>
+    <string name="ventiladores_pct">Ventiladores\n%1$d %%</string>
+    <string name="modo">Modo</string>
+    <string name="modo_solo_admin">El modo y las celdas los controla el administrador desde el tablero web</string>
+    <string name="ultimo_comando">Último comando confirmado en %1$d ms</string>
+    <string name="sin_comandos">Los cambios se confirman con el ESP32</string>
+    <string name="confirmado_en">%1$s · confirmado en %2$d ms</string>
+    <string name="objetivo_valor">Objetivo %1$.1f °C</string>
+    <string name="objetivo_limite">El objetivo ya está en su límite (%1$.1f °C)</string>
+    <string name="ultimos_eventos">Últimos eventos</string>
+    <string name="sin_eventos">Todavía no hay eventos</string>
+    <string name="evento_detalle">%1$s · %2$s</string>
+    <string name="esp32">ESP32</string>
+    <string name="dispositivo_detalle">IP %1$s · señal %2$s dBm\nFirmware %3$s · caídas de Wi-Fi %4$s</string>
+    <string name="bajar_objetivo">Bajar el objetivo medio grado</string>
+    <string name="subir_objetivo">Subir el objetivo medio grado</string>
+    <string name="ver_historial">Ver historial guardado en el teléfono</string>
+
+    <!-- Alertas -->
+    <string name="alerta_froster">Alerta de FROSTER</string>
+    <string name="alerta_resuelta">Alerta resuelta: el ESP32 volvió a la normalidad</string>
+    <string name="alerta_detalle">%1$s\n\n%2$s</string>
+    <string name="entendido">Entendido</string>
+    <string name="canal_alertas">Alertas de FROSTER</string>
+    <string name="canal_alertas_desc">Congelamiento, falta de hielo, falla de sensor y fugas</string>
+
+    <!-- Historial -->
+    <string name="historial">Historial</string>
+    <string name="salir">Salir</string>
+    <string name="espejo_nota">Mismas ventanas que el panel del administrador, en el mismo orden. Solo para ver; toca una pieza del gabinete para saber qué revisar.</string>
+    <string name="vista_clasica">Vista clásica</string>
+    <string name="vista_panel">Vista del panel</string>
+    <string name="eventos">Eventos</string>
+    <string name="lecturas">Lecturas</string>
+    <string name="picos">Picos</string>
+    <string name="historial_vacio">Todavía no hay registros guardados en el teléfono</string>
+    <string name="resumen_historial">%1$d registros guardados en este teléfono (Room)</string>
+    <string name="lectura_fila">Cámara %1$s · bloque %2$s · N%3$d</string>
+</resources>

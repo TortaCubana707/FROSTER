@@ -156,7 +156,25 @@
     <canvas id="grafica"></canvas>
   </div>
 
-  <div class="pie">ESP32 → Wi-Fi → Firebase (tarjeta/refrigeracion) → este tablero.
+  <div class="equipos">
+    <div class="tarjeta">
+      <div class="etiqueta">Latencia</div>
+      <div class="equipo" style="margin-top:8px">Telemetría (ESP32 → aquí): <b id="latTele" style="margin-left:6px">--</b></div>
+      <div class="equipo" style="margin-top:6px">Comando (aquí → ESP32 → aquí): <b id="latCmd" style="margin-left:6px">--</b></div>
+      <div class="controles"><button id="probarLatencia">Probar 10 comandos</button></div>
+      <div class="sub" id="latResumen">&nbsp;</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Dispositivo</div>
+      <div class="sub" id="dispositivo" style="margin-top:8px">&nbsp;</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etiqueta">Eventos recientes</div>
+      <div class="sub" id="eventos" style="margin-top:8px">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="pie">ESP32 → Wi-Fi → Firebase (froster/) → este tablero.
     La gráfica guarda los últimos 30 min mientras la página esté abierta.</div>
 </section>
 </main>
@@ -168,7 +186,7 @@ const firebaseConfig = {
   databaseURL: "https://sqliteemi-default-rtdb.firebaseio.com",
   projectId: "sqliteemi"
 };
-const RAIZ = "tarjeta/refrigeracion";
+const RAIZ = "froster";
 const LATIDO_MAXIMO_MS = 15000;     // sin cambio de uptime en 15 s = el ESP32 no publica
 const VENTANA_MS = 30 * 60 * 1000;
 const DEMO = new URLSearchParams(location.search).has("demo");
@@ -180,6 +198,9 @@ const grados = v => Number.isFinite(v) ? v.toFixed(1) + " °C" : "--";
 let lecturas = {}, estado = {}, config = {};
 let uptimeAnterior = null, ultimoLatido = 0;
 let escribirConfig = () => {};
+let dispositivo = {}, eventos = [];
+const pendientes = new Map();         // cmd_id -> momento en que se escribio
+const muestrasCmd = [];               // RTT de los ultimos comandos, en ms
 
 // ------------------------------------------------------------------ gráfica
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -294,12 +315,59 @@ $("manualA").onclick = () => escribirConfig({ manual_a: !config.manual_a });
 $("manualB").onclick = () => escribirConfig({ manual_b: !config.manual_b });
 $("carga").onclick = () => escribirConfig({ carga_alta: !estado.carga_alta });
 
+// ------------------------------------------------------------------ latencia y red
+function registrarComando(ms) {
+  muestrasCmd.push(ms);
+  if (muestrasCmd.length > 20) muestrasCmd.shift();
+  $("latCmd").textContent = Math.round(ms) + " ms";
+}
+
+function pintarLatenciaTelemetria() {
+  const ts = num(lecturas.ts);
+  $("latTele").textContent = Number.isFinite(ts) ? Math.max(0, Date.now() - ts) + " ms" : "--";
+}
+
+function pintarRed() {
+  const d = dispositivo;
+  const hora = Number.isFinite(num(d.ultima_conexion))
+    ? new Date(d.ultima_conexion).toLocaleTimeString("es-MX") : "--";
+  $("dispositivo").innerHTML = d.ip
+    ? `IP ${d.ip} · señal ${d.rssi} dBm<br>Caídas de Wi-Fi: ${d.caidas_wifi} · firmware ${d.firmware}<br>Última conexión: ${hora}`
+    : "Sin datos del dispositivo";
+  $("eventos").innerHTML = eventos.length ? eventos.map(e =>
+    `${Number.isFinite(num(e.ts)) ? new Date(e.ts).toLocaleTimeString("es-MX") : ""} · ${e.texto}`).join("<br>") : "Sin eventos";
+}
+
+/* Manda el mismo objetivo 10 veces, uno cada 1.5 s, y resume el ida y vuelta. */
+$("probarLatencia").onclick = async () => {
+  const boton = $("probarLatencia");
+  boton.disabled = true;
+  muestrasCmd.length = 0;
+  for (let i = 0; i < 10; i++) {
+    $("latResumen").textContent = `Enviando comando ${i + 1} de 10...`;
+    escribirConfig({ setpoint: num(estado.setpoint) || 28 });
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  const n = muestrasCmd.length;
+  const prom = n ? muestrasCmd.reduce((a, b) => a + b, 0) / n : NaN;
+  $("latResumen").textContent = n
+    ? `${n} de 10 confirmados · promedio ${Math.round(prom)} ms · máximo ${Math.round(Math.max(...muestrasCmd))} ms`
+    : "El ESP32 no confirmó ningún comando: revisa que esté encendido y con el firmware de la E2";
+  boton.disabled = false;
+};
+
 // ------------------------------------------------------------------ Firebase
 function arrancarFirebase() {
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
-  escribirConfig = cambios => db.ref(`${RAIZ}/config`).update(cambios)
-    .catch(e => alert("No se pudo guardar: " + e.message));
+  /* Cada comando lleva cmd_id; el ESP32 lo devuelve en ack/ al aplicarlo. El tiempo
+     de ida y vuelta se mide con el reloj de esta computadora, sin depender del ESP32. */
+  escribirConfig = cambios => {
+    const id = Date.now();
+    pendientes.set(id, performance.now());
+    return db.ref(`${RAIZ}/config`).update({ ...cambios, cmd_id: id })
+      .catch(e => { pendientes.delete(id); alert("No se pudo guardar: " + e.message); });
+  };
 
   firebase.auth().onAuthStateChanged(usuario => {
     $("acceso").style.display = usuario ? "none" : "block";
@@ -307,7 +375,7 @@ function arrancarFirebase() {
     if (!usuario) return;
     crearGrafica();
     // Los listeners van DESPUÉS del login: antes, la base los rechaza (Permission denied)
-    db.ref(`${RAIZ}/lecturas`).on("value", s => { lecturas = s.val() || {}; pintar(); agregarPunto(); });
+    db.ref(`${RAIZ}/lecturas`).on("value", s => { lecturas = s.val() || {}; pintar(); agregarPunto(); pintarLatenciaTelemetria(); });
     db.ref(`${RAIZ}/estado`).on("value", s => {
       estado = s.val() || {};
       const up = num(estado.uptime_s);
@@ -316,6 +384,17 @@ function arrancarFirebase() {
       pintar();
     });
     db.ref(`${RAIZ}/config`).on("value", s => { config = s.val() || {}; pintar(); });
+    db.ref(`${RAIZ}/ack`).on("value", s => {
+      const a = s.val() || {};
+      const t0 = pendientes.get(a.cmd_id);
+      if (t0 === undefined) return;
+      pendientes.delete(a.cmd_id);
+      registrarComando(performance.now() - t0);
+    });
+    db.ref(`${RAIZ}/dispositivo`).on("value", s => { dispositivo = s.val() || {}; pintarRed(); });
+    db.ref(`${RAIZ}/eventos`).orderByKey().limitToLast(6).on("value", s => {
+      eventos = []; s.forEach(e => { eventos.unshift(e.val()); }); pintarRed();
+    });
   });
 
   $("entrar").onclick = () => {

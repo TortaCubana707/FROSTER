@@ -1,0 +1,4 @@
+// Archivo de compilación del proyecto: los módulos declaran sus propios plugins.
+plugins {
+    alias(libs.plugins.android.application) apply false
+}

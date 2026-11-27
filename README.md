@@ -6,13 +6,16 @@ un foco incandescente amarillo simula el calor de una computadora y el módulo t
 
 > Estado al 8 nov 2026: firmware actual cargado y probado en la placa. Se conecta solo al Wi-Fi,
 > publica en Firebase, la LCD, la OLED, el LED RGB y el buzzer funcionan, los ventiladores cambian de
-> velocidad con el nivel (PWM) y el sensor de fuga apaga todo a los 4 s de mojarse y lo reanuda al
+> velocidad con el nivel (PWM) y el sensor de fuga apaga todo al mojarse (0.3 s) y lo reanuda al
 > secarse. En la computadora pasan 63 verificaciones de control y las de LED y buzzer. Fotos del
 > prototipo en [evidencias/E1](evidencias/E1) y video de 1 minuto en
 > [video_e1/FROSTER_E1_video.mp4](video_e1/FROSTER_E1_video.mp4) (animación + fotos reales + voz).
 
 **Equipo:** Emilio Garduño Servin, Kevin Alvarez De Jesus, Valeria Monserrat Benitez Alvarez y
 Jesus Emmanuel Garcia Rodriguez.
+
+**Repositorio del equipo:** firmware (`firmware/`), app Android (`android/`), tablero React
+(`web/`) y documentación (`docs/`). Cómo trabajar en él: [docs/GUIA_EQUIPO.md](docs/GUIA_EQUIPO.md).
 
 La guía para armarlo paso a paso está en
 [FROSTER_Guia_Conexiones.md](FROSTER_Guia_Conexiones.md).
@@ -63,7 +66,7 @@ detener nada y cuenta las caídas (`estado/caidas_wifi`). Cada sensor tiene su a
 | Bloque frío bajo 0.5 °C | Apaga las celdas; vuelven al pasar de 6 °C |
 | Celda encendida 3 min y el bloque no está 2 °C más frío que la cámara | Se acabó el hielo o se paró la bomba (deducido, sin sensor de agua): apaga las celdas; reintenta tras 5 min por cada corte |
 | Un sensor sin lectura 10 s | Apaga las celdas |
-| Humedad junto a la bomba ≥ 40 % durante 4 s | Fuga: apaga celdas, bomba y ventiladores; vuelve 30 s después de secarse |
+| Humedad junto a la bomba ≥ 40 % durante 0.3 s (se lee cada 50 ms) | Fuga: corta al instante celdas, bomba y ventiladores; vuelve 30 s después de secarse |
 | Arranque de la placa | 60 s de espera; la bomba arranca 15 s antes que las celdas y sigue 60 s después |
 
 ---
@@ -195,29 +198,13 @@ Prueba real (Poco F6 en AnTuTu, cargando): la batería subió +2.5 °C con el m�
 
 ## Firebase
 
-Proyecto `sqliteemi`, cuenta del ESP32 `esp32@correo.com`.
+Todo vive bajo `froster/` en el proyecto `sqliteemi`: `lecturas/`, `estado/`, `config/`, `ack/`,
+`dispositivo/` y `eventos/`. Las rutas, tipos y la forma de mandar comandos están en
+[docs/CONTRATO_FIREBASE.md](docs/CONTRATO_FIREBASE.md); las reglas con validación de tipos, en
+[firebase/database.rules.json](firebase/database.rules.json).
 
-```
-tarjeta/refrigeracion/
-  lecturas/   ambiente, humedad, punto_rocio, placa_fria, disipador_a, pendiente, prediccion
-  estado/     nivel, celda_a, celda_b, bomba, motivo, alerta, setpoint, modo, online
-  config/     setpoint (15–40), modo (auto | manual | off), manual_a, manual_b, carga_alta
-```
-
-El tablero (`dashboard/index.html`) y la app Android (CRUDSQLITE1, `RefrigeracionActivity`) leen
-estas mismas rutas.
-
-### Tablero en la computadora
-
-`dashboard/abrir_tablero.sh` lo sirve en `http://localhost:8080` y abre el navegador (Firebase
-no deja iniciar sesión desde `file://`). Se entra con la cuenta del ESP32; la contraseña no se
-guarda. Muestra nivel, cámara con tendencia y predicción, objetivo (con − / +), bloque frío y
-rocío, qué equipos están encendidos, el motivo de la decisión, la alerta y una gráfica de los
-últimos 30 min. Dice **EN VIVO** solo si `uptime_s` cambió en los últimos 15 s. Con
-`index.html?demo` muestra datos simulados, marcados como DEMO, para revisar el diseño.
-La versión anterior quedó en `dashboard/index_v1_respaldo.html`.
-
----
+Los comandos llegan al ESP32 por un *stream* (al instante) y cada uno se confirma en `ack/`; las
+lecturas y el estado se suben solo cuando cambian, más un latido cada 10 s.
 
 ## Archivos
 

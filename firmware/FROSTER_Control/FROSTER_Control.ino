@@ -29,7 +29,9 @@
  *   No hay ni un delay(): el loop() reparte su trabajo con millis() (red cada
  *   3 s, LCD cada 3 s, OLED cada 1 s, una nota del buzzer cuando toca) y la
  *   tarea de control corre cada 2 s en su propio hilo de FreeRTOS. Si se cae
- *   el WiFi, vigilarWiFi() lo reintenta cada 10 s sin detener nada.
+ *   el WiFi, vigilarWiFi() lo reintenta cada 10 s sin detener nada. Los
+ *   comandos de la app llegan por un stream de Firebase y la telemetria se
+ *   sube solo cuando cambia (ver nube.ino).
  *
  * ARCHIVOS (pestanas del IDE de Arduino)
  *   FROSTER_Control.ino  configuracion, logica de decision, setup() y loop()
@@ -83,10 +85,15 @@
 /* --- Credenciales Firebase: en secretos.h, que no se sube a GitHub --- */
 #include "secretos.h"
 
-/* --- Rutas (las mismas que ya lee la app y el tablero) --- */
-#define RUTA_LECTURAS "tarjeta/refrigeracion/lecturas"
-#define RUTA_ESTADO   "tarjeta/refrigeracion/estado"
-#define RUTA_CONFIG   "tarjeta/refrigeracion/config"
+/* --- Rutas en Firebase (contrato en docs/CONTRATO_FIREBASE.md) --- */
+#define RUTA_BASE        "froster"
+#define RUTA_LECTURAS    RUTA_BASE "/lecturas"
+#define RUTA_ESTADO      RUTA_BASE "/estado"
+#define RUTA_CONFIG      RUTA_BASE "/config"
+#define RUTA_ACK         RUTA_BASE "/ack"
+#define RUTA_DISPOSITIVO RUTA_BASE "/dispositivo"
+#define RUTA_EVENTOS     RUTA_BASE "/eventos"
+#define FIRMWARE_VERSION "2.0-e2"
 
 /* --- Pines --- */
 #define DHTPIN       4
@@ -174,12 +181,12 @@ struct Nota { uint16_t hz, ms; };            // hz 0 = silencio; ms 0 = fin
 #define PROXY_ESPERA_MS    180000UL
 #define PROXY_MARGEN_C      2.0f
 #define PROXY_REARME_MS    300000UL   // 5 min apagadas por cada corte (maximo 30 min)
-/* Fuga: humedad junto a la bomba. Se confirma 4 s seguida y se suelta tras 30 s ya
-   seca, para que una gota suelta no apague todo ni un sensor que se seca lo prenda y
-   apague una y otra vez. */
+/* Fuga: humedad junto a la bomba. Se lee cada 50 ms y basta con 0.3 s seguidos de
+   lecturas mojadas para cortar: la bomba saca mucha agua de golpe. Se suelta tras 30 s
+   ya seca, para que un sensor que se va secando no prenda y apague la bomba una y otra vez. */
 #define FUGA_UMBRAL_PCT    40.0f
 #define FUGA_HISTERESIS    10.0f
-#define FUGA_CONFIRMA_MS    4000UL
+#define FUGA_CONFIRMA_MS     300UL
 #define FUGA_LIBERA_MS     30000UL
 
 enum Modo : uint8_t { MODO_AUTO = 0, MODO_MANUAL = 1, MODO_APAGADO = 2 };
@@ -466,6 +473,7 @@ Salidas decidir(const Entradas &e, Control &c, uint32_t ahora) {
  * HARDWARE Y NUBE
  * ========================================================================= */
 FirebaseData fbdo;
+FirebaseData fbStream;                 // conexion aparte que escucha config/ en tiempo real
 FirebaseAuth auth;
 FirebaseConfig config;
 WiFiManager wm;
@@ -487,6 +495,7 @@ Entradas gOrdenes = { NAN, NAN, NAN, 28.0f, MODO_AUTO, false, false, false, SENS
 Salidas  gSalidas = {};
 float gCam = NAN, gTubo = NAN, gAgua = NAN, gHum = NAN, gRocio = NAN;
 float gFugaPct = NAN;                 // humedad junto a la bomba, 0 a 100 % (NAN sin sensor)
+volatile bool gFuga = false;          // fuga confirmada: la lee la tarea de control
 int   gFugaRaw = -1;                  // lectura cruda del ADC, para calibrar (-1 sin sensor)
 uint32_t gMsOnA = 0, gMsOnB = 0;      // tiempo encendida de cada celda (para la LCD)
 Control  ctl;      // solo lo toca la tarea de control
@@ -564,10 +573,11 @@ void setup() {
 
 void loop() {
   atenderComandosSerie();
-  static uint32_t tNube = 0, tPantalla = 0, tSerie = 0;
+  static uint32_t tPantalla = 0, tSerie = 0;
   uint32_t ahora = millis();
 
   wm.process();                                   // atiende el portal si esta abierto
+  vigilarFuga();                                  // cada 50 ms; corta la bomba al instante
   vigilarWiFi();                                  // reconexion autonoma
   if (WiFi.status() == WL_CONNECTED && !firebaseIniciado) iniciarFirebase();
 
@@ -578,18 +588,7 @@ void loop() {
   msA = gMsOnA; msB = gMsOnB;
   portEXIT_CRITICAL(&mux);
 
-  if (ahora - tNube >= 3000UL) {
-    tNube = ahora;
-    if (firebaseIniciado && WiFi.status() == WL_CONNECTED && Firebase.ready()) {
-      // Primero se sube lo pedido por USB; si no, leerOrdenes() lo pisaria con lo viejo
-      if (hayPendienteConfig && Firebase.updateNode(fbdo, RUTA_CONFIG, pendienteConfig)) {
-        pendienteConfig.clear();
-        hayPendienteConfig = false;
-      }
-      if (!hayPendienteConfig) leerOrdenes();
-      publicar();
-    }
-  }
+  atenderNube();                                  // comandos al instante, telemetria filtrada
 
   if (ahora - tPantalla >= 3000UL) {
     tPantalla = ahora;

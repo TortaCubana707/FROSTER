@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Blanco a propósito: el color real se pone con backgroundTint desde el código -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="100dp" />
+    <solid android:color="#FFFFFFFF" />
+</shape>
