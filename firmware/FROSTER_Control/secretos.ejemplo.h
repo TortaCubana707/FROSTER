@@ -1,7 +1,8 @@
-// Credenciales de Firebase del ESP32. Este archivo es la plantilla; el real (secretos.h) NO se sube a GitHub (.gitignore).
-// Para compilar en otra computadora: copiar secretos.ejemplo.h como secretos.h y llenarlo.
+// Plantilla de credenciales. Copiar como secretos.h y llenarlo (secretos.h NO se sube a GitHub).
 #pragma once
-#define API_KEY ""        // Firebase > Configuración del proyecto > Clave de API web
+#define WIFI_SSID ""      // red fija opcional (vacio = portal de WiFiManager)
+#define WIFI_PASS ""      // vacio si la red es abierta
+#define API_KEY ""        // Firebase > Configuracion del proyecto > Clave de API web
 #define DATABASE_URL ""   // https://<proyecto>-default-rtdb.firebaseio.com
 #define USER_EMAIL ""     // usuario creado en Firebase Authentication para la placa
 #define USER_PASSWORD ""

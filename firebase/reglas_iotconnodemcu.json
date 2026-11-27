@@ -1,0 +1,161 @@
+{
+  "rules": {
+    "tarjetas": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "dispositivos": {
+        "led1": {
+          "estado": {
+            ".validate": "newData.isString() && (newData.val() === 'ON' || newData.val() === 'OFF')"
+          }
+        }
+      },
+      "sensores": {
+        "sensor_ldr": {
+          "porcentaje": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+          }
+        },
+        "sensor_suelo": {
+          "porcentaje": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+          }
+        },
+        "sensor_ultrasonico": {
+          "distancia_cm": {
+            ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 450"
+          }
+        }
+      }
+    },
+    "froster": {
+      ".read": "auth != null",
+      "lecturas": {
+        ".write": "auth != null && auth.token.email === 'esp32@correo.com'"
+      },
+      "estado": {
+        ".write": "auth != null && auth.token.email === 'esp32@correo.com'"
+      },
+      "ack": {
+        ".write": "auth != null && auth.token.email === 'esp32@correo.com'"
+      },
+      "dispositivo": {
+        ".write": "auth != null && auth.token.email === 'esp32@correo.com'"
+      },
+      "eventos": {
+        ".write": "auth != null && auth.token.email === 'esp32@correo.com'",
+        ".indexOn": [
+          "ts"
+        ]
+      },
+      "config": {
+        ".write": "(auth != null && root.child('roles').child(auth.uid).val() === 'admin') || (auth != null && auth.token.email === 'esp32@correo.com')",
+        "setpoint": {
+          ".validate": "newData.isNumber() && newData.val() >= 15 && newData.val() <= 40",
+          ".write": "auth != null"
+        },
+        "modo": {
+          ".validate": "newData.isString() && newData.val().matches(/^(auto|manual|off)$/)",
+          ".write": "auth != null"
+        },
+        "manual_a": {
+          ".validate": "newData.isBoolean()"
+        },
+        "manual_b": {
+          ".validate": "newData.isBoolean()"
+        },
+        "carga_alta": {
+          ".validate": "newData.isBoolean()"
+        },
+        "cmd_id": {
+          ".validate": "newData.isNumber()",
+          ".write": "auth != null"
+        },
+        "pwm_auto": {
+          ".validate": "newData.isBoolean()"
+        },
+        "pwm_pct": {
+          ".validate": "newData.isNumber() && newData.val() >= 20 && newData.val() <= 100"
+        },
+        "silencio": {
+          ".validate": "newData.isBoolean()"
+        },
+        "accion": {
+          ".validate": "newData.isString() && newData.val().matches(/^(reiniciar|reset_horas|reset_caidas|probar_bomba|probar_celda_a|probar_celda_b|probar_buzzer|probar_led)$/)"
+        },
+        "accion_id": {
+          ".validate": "newData.isNumber()"
+        },
+        "ajustes": {
+          "congela_aviso": {
+            ".validate": "newData.isNumber() && newData.val() >= 0.5 && newData.val() <= 8"
+          },
+          "congela_corte": {
+            ".validate": "newData.isNumber() && newData.val() >= -2 && newData.val() <= 4"
+          },
+          "congela_rearme": {
+            ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 15"
+          },
+          "fuga_umbral": {
+            ".validate": "newData.isNumber() && newData.val() >= 10 && newData.val() <= 90"
+          },
+          "t_min_on_s": {
+            ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 600"
+          },
+          "t_min_off_s": {
+            ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 600"
+          },
+          "t_confirma_s": {
+            ".validate": "newData.isNumber() && newData.val() >= 5 && newData.val() <= 120"
+          },
+          "t_precirc_s": {
+            ".validate": "newData.isNumber() && newData.val() >= 5 && newData.val() <= 120"
+          },
+          "t_postcirc_s": {
+            ".validate": "newData.isNumber() && newData.val() >= 10 && newData.val() <= 600"
+          },
+          "pwm_n1": {
+            ".validate": "newData.isNumber() && newData.val() >= 20 && newData.val() <= 100"
+          },
+          "pwm_n2": {
+            ".validate": "newData.isNumber() && newData.val() >= 20 && newData.val() <= 100"
+          },
+          "pwm_n3": {
+            ".validate": "newData.isNumber() && newData.val() >= 20 && newData.val() <= 100"
+          },
+          "pwm_hz": {
+            ".validate": "newData.isNumber() && newData.val() >= 100 && newData.val() <= 2000"
+          },
+          "cal_camara": {
+            ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 5"
+          },
+          "cal_humedad": {
+            ".validate": "newData.isNumber() && newData.val() >= -15 && newData.val() <= 15"
+          },
+          "cal_bloque": {
+            ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 5"
+          },
+          "$otro": {
+            ".validate": false
+          }
+        },
+        "origen": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && newData.val().matches(/^(app|web)$/)"
+        },
+        "$otro": {
+          ".validate": false
+        }
+      },
+      "ui": {
+        ".write": "auth != null && root.child('roles').child(auth.uid).val() === 'admin'"
+      }
+    },
+    "roles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    }
+  }
+}

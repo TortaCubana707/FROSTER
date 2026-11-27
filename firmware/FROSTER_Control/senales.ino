@@ -17,7 +17,9 @@ const Nota *melodia = nullptr;
 uint8_t notaIdx = 0;
 uint32_t tNota = 0;
 
-void tocar(const Nota *m) { melodia = m; notaIdx = 0; tNota = 0; }
+void tocar(const Nota *m) { if (gSilencio) return; melodia = m; notaIdx = 0; tNota = 0; }
+void tocarSiempre(const Nota *m) { melodia = m; notaIdx = 0; tNota = 0; }   // pruebas: suena aunque este en silencio
+const Nota MEL_PRUEBA[] = { {523,150},{0,50},{659,150},{0,50},{784,150},{0,50},{1047,300},{0,0} };
 
 bool sonando() { return melodia != nullptr; }
 
@@ -31,6 +33,7 @@ void silencio() {
 
 void atenderBuzzer() {
   if (!melodia) return;
+  if (gSilencio && gPrueba != P_BUZZER) { silencio(); melodia = nullptr; return; }
   uint32_t ahora = millis();
   if (tNota != 0) {
     if (ahora - tNota < melodia[notaIdx].ms) return;   // la nota sigue sonando
@@ -68,6 +71,18 @@ void gestionarSenales(const Salidas &s) {
   const bool encendido = (ahora / 400) % 2;  // parpadeo de 0.4 s
   const uint8_t nivel = s.nivel ? s.nivel : 1;  // 0 = el control aun no decide
 
+  // ---- Prueba del buzzer (desde el tablero): nube.ino solo marca gPrueba; aqui se toca una vez
+  static bool buzzerProbado = false;
+  if (gPrueba == P_BUZZER && !buzzerProbado) { buzzerProbado = true; tocarSiempre(MEL_PRUEBA); }
+  if (gPrueba != P_BUZZER) buzzerProbado = false;
+
+  // ---- Prueba del LED (desde el tablero): rojo, verde, azul y blanco, 1 s cada uno
+  if (gPrueba == P_LED) {
+    const uint8_t f = ((gPruebaHasta - ahora) / 1000) % 4;
+    if (f == 3) color(255, 0, 0); else if (f == 2) color(0, 255, 0); else if (f == 1) color(0, 0, 255); else color(255, 255, 255);
+    atenderBuzzer();
+    return;
+  }
   // ---- LED: un color por estado
   if (ahora < 10000UL)               encendido ? color(0, 0, 255)   : color(0, 0, 0);
   else if (s.alerta == A_CONGELA)    encendido ? color(160, 0, 255) : color(0, 0, 0);
