@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
-import { ref, onValue } from "firebase/database";
-import { db } from "../firebase";
+import { fuente } from "../datos";
 
-/** Valor en vivo de una ruta de Firebase. `null` mientras llega el primer dato. */
+/** Valor en vivo de una ruta. `null` mientras llega el primer dato. */
 export function useNodo(ruta) {
   const [valor, setValor] = useState(null);
-  useEffect(() => onValue(ref(db, ruta), (s) => setValor(s.val() ?? {})), [ruta]);
+  useEffect(() => fuente.escuchar(ruta, (v) => setValor(v ?? {})), [ruta]);
   return valor;
+}
+
+/** Los últimos `n` eventos (froster/eventos), el más reciente primero. */
+export function useEventos(n) {
+  const [eventos, setEventos] = useState(null);
+  useEffect(
+    () => fuente.escuchar("froster/eventos", (lista) => setEventos([...lista].reverse()), { ultimos: n }),
+    [n]
+  );
+  return eventos;
+}
+
+/** true si este navegador está conectado a Firebase (.info/connected). */
+export function useConexion() {
+  const [conectado, setConectado] = useState(null);
+  useEffect(() => fuente.escuchar(".info/connected", (v) => setConectado(v === true)), []);
+  return conectado;
 }
