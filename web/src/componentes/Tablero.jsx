@@ -1,75 +1,101 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { signOut } from "firebase/auth";
-import { auth } from "../firebase";
-import { ALERTAS, NIVELES, RUTAS } from "../contrato";
-import { useNodo } from "../hooks/useNodo";
+import { useCallback, useState } from "react";
+import { RUTAS } from "../contrato";
+import { fuente } from "../datos";
+import { useConexion, useEventos, useNodo } from "../hooks/useNodo";
 import { useLatido } from "../hooks/useLatido";
 import { useComando } from "../hooks/useComando";
-import { sonarAlarma } from "../sonido";
+import { useHistorial } from "../hooks/useHistorial";
+import { useAvisos } from "../hooks/useAvisos";
+import { useAlarma } from "../hooks/useAlarma";
+import Encabezado from "./Encabezado";
+import BannerAlerta from "./BannerAlerta";
+import Nivel from "./Nivel";
 import Tarjeta from "./Tarjeta";
+import Grafica from "./Grafica";
+import Eventos from "./Eventos";
+import Latencia from "./Latencia";
+import { Modo, Objetivo } from "./Controles";
 import Avisos from "./Avisos";
 
 const grados = (v) => (typeof v === "number" ? `${v.toFixed(1)} °C` : "--");
+const signo = (v) => (v > 0 ? "+" : "");
 
 export default function Tablero() {
-  const lecturas = useNodo(RUTAS.lecturas) ?? {};
+  const lecturasNodo = useNodo(RUTAS.lecturas);
+  const lecturas = lecturasNodo ?? {};
   const estado = useNodo(RUTAS.estado) ?? {};
+  const config = useNodo(RUTAS.config) ?? {};
+  const dispositivo = useNodo(RUTAS.dispositivo) ?? {};
   const ack = useNodo(RUTAS.ack);
+  const eventos = useEventos(15);
+  const conectado = useConexion();
   const vivo = useLatido(estado.uptime_s);
   const comando = useComando(ack);
-  const [avisos, setAvisos] = useState([]);
-
-  const avisar = useCallback((texto, tipo = "info") => {
-    const id = Date.now() + Math.random();
-    setAvisos((a) => [...a, { id, texto, tipo }]);
-    setTimeout(() => setAvisos((a) => a.filter((x) => x.id !== id)), 4000);
-  }, []);
-
-  // Alarma: suena y avisa cuando aparece una alerta nueva
-  const alertaPrevia = useRef(0);
+  const puntos = useHistorial(lecturasNodo, estado.setpoint);
+  const { avisos, avisar, cerrar } = useAvisos();
   const alertaId = estado.alerta_id ?? 0;
-  useEffect(() => {
-    if (alertaId && alertaId !== alertaPrevia.current) {
-      sonarAlarma();
-      avisar(ALERTAS[alertaId]?.nombre ?? "Alerta", "grave");
-    } else if (!alertaId && alertaPrevia.current) {
-      avisar("Alerta resuelta", "ok");
-    }
-    alertaPrevia.current = alertaId;
-  }, [alertaId, avisar]);
+  const { silenciada, silenciar } = useAlarma(alertaId, avisar);
 
-  const cambiarObjetivo = (delta) => {
-    const nuevo = Math.min(40, Math.max(15, (estado.setpoint ?? 28) + delta));
-    comando({ setpoint: nuevo })
-      .then((ms) => avisar(`Objetivo ${nuevo} °C confirmado por el ESP32 en ${ms} ms`, "ok"))
-      .catch((e) => avisar(e.message, "grave"));
-  };
+  const [latencias, setLatencias] = useState([]);
+  const [enviando, setEnviando] = useState(false);
+
+  // Todas las órdenes pasan por aquí: config/ con cmd_id → ack/ del ESP32 → aviso con los ms
+  const enviar = useCallback((cambios, queSePidio) => {
+    setEnviando(true);
+    comando(cambios)
+      .then((ms) => {
+        setLatencias((l) => [...l.slice(-19), ms]);
+        avisar(`${queSePidio} · confirmado por el ESP32 en ${ms} ms`, "ok");
+      })
+      .catch((e) => avisar(e.message, "grave", 7000))
+      .finally(() => setEnviando(false));
+  }, [comando, avisar]);
 
   return (
     <main>
-      <header>
-        <h1>FROST<span>ER</span> · tablero</h1>
-        <span className={`insignia ${vivo ? "vivo" : "viejo"}`}>{vivo ? "EN VIVO" : "SIN DATOS DEL ESP32"}</span>
-        <button onClick={() => signOut(auth)}>Salir</button>
-      </header>
+      <Encabezado vivo={vivo} conectado={conectado} demo={fuente.demo}
+        alSalir={() => fuente.salir()} alSimularFuga={() => fuente.simularFuga?.()} />
 
-      {alertaId > 0 && <div className="alerta">⚠ {estado.alerta}</div>}
+      <BannerAlerta alertaId={alertaId} textoEsp32={estado.alerta} silenciada={silenciada} alSilenciar={silenciar} />
 
-      <section className="rejilla">
-        <Tarjeta titulo="Nivel" valor={`N${estado.nivel ?? "-"}`} detalle={NIVELES[estado.nivel]} />
-        <Tarjeta titulo="Cámara" valor={grados(lecturas.ambiente)} detalle={`Humedad ${lecturas.humedad ?? "--"} %`} />
-        <Tarjeta titulo="Objetivo" valor={grados(estado.setpoint)}>
-          <div className="fila">
-            <button onClick={() => cambiarObjetivo(-0.5)}>−</button>
-            <button onClick={() => cambiarObjetivo(+0.5)}>+</button>
-          </div>
+      {!vivo && (
+        <p className="nota">
+          Los valores son los últimos que publicó el ESP32. Si sigue sin datos, revisa que la placa esté encendida
+          y con el firmware de la rama <code>e2-firebase</code>.
+        </p>
+      )}
+
+      <div className="rejilla">
+        <Nivel estado={estado} />
+
+        <Tarjeta titulo="Cámara" valor={grados(lecturas.ambiente)}
+          detalle={`Humedad ${lecturas.humedad ?? "--"} %`}>
+          {typeof lecturas.pendiente === "number" && (
+            <div className="tenue">
+              {signo(lecturas.pendiente)}{lecturas.pendiente.toFixed(2)} °C/min · prevista {grados(lecturas.prediccion)} en 2 min
+            </div>
+          )}
         </Tarjeta>
-        <Tarjeta titulo="Bloque frío" valor={grados(lecturas.placa_fria)} detalle={`Fuga ${lecturas.fuga_pct ?? "--"} %`} />
-      </section>
 
-      {/* E4: aquí siguen los demás indicadores, la gráfica, el modo, el historial de eventos... */}
+        <Tarjeta titulo="Bloque frío" valor={grados(lecturas.placa_fria)}
+          detalle={`Rocío ${grados(lecturas.punto_rocio)} · fuga ${lecturas.fuga_pct ?? "--"} %`}>
+          {estado.condensa && <div className="chip ambar">Bajo el punto de rocío: puede condensar</div>}
+        </Tarjeta>
 
-      <Avisos avisos={avisos} />
+        <Grafica puntos={puntos} />
+        <Eventos eventos={eventos} />
+
+        <Objetivo setpoint={estado.setpoint} enviando={enviando} enviar={enviar} avisar={avisar} />
+        <Modo estado={estado} config={config} enviando={enviando} enviar={enviar} />
+        <Latencia latencias={latencias} enviando={enviando} medir={() => enviar({}, "Prueba de latencia")}
+          dispositivo={dispositivo} />
+      </div>
+
+      <footer className="tenue">
+        ESP32 → Wi-Fi → Firebase (<code>froster/</code>) → este panel (administrador) y la app Android (usuario).
+      </footer>
+
+      <Avisos avisos={avisos} cerrar={cerrar} />
     </main>
   );
 }

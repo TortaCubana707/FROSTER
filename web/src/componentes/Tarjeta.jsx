@@ -1,10 +1,10 @@
-export default function Tarjeta({ titulo, valor, detalle, children }) {
+export default function Tarjeta({ titulo, valor, detalle, children, className = "", estilo }) {
   return (
-    <div className="tarjeta">
-      <div className="etiqueta">{titulo}</div>
+    <section className={`tarjeta ${className}`} style={estilo}>
+      <h2 className="etiqueta">{titulo}</h2>
       {valor !== undefined && <div className="valor">{valor}</div>}
       {detalle && <div className="tenue">{detalle}</div>}
       {children}
-    </div>
+    </section>
   );
 }
