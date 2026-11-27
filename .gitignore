@@ -12,6 +12,10 @@
 !/evidencias/
 !/herramientas/
 !/video_e1/
+!/docs/
+!/firebase/
+!/android/
+!/web/
 /video_e1/cuadros/
 /herramientas/*
 !/herramientas/actualizar_grafo.sh

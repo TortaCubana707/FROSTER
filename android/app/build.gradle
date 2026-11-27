@@ -1,0 +1,71 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+// Datos de Firebase: se pueden cambiar en local.properties sin tocar el código.
+def propiedadesLocales = new Properties()
+def archivoLocal = rootProject.file('local.properties')
+if (archivoLocal.exists()) archivoLocal.withInputStream { propiedadesLocales.load(it) }
+def propiedad = { String nombre, String porDefecto ->
+    (propiedadesLocales.getProperty(nombre) ?: porDefecto).trim()
+}
+
+android {
+    namespace 'com.froster.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.froster.app"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "0.1-e3"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Identifican el proyecto de Firebase; no dan acceso por sí solos (eso lo hace el login).
+        buildConfigField "String", "FIREBASE_API_KEY", "\"${propiedad('FIREBASE_API_KEY', 'AIzaSyBln6K_wQ6fgmo1CYZG9XLKZtkehjiVQzM')}\""
+        buildConfigField "String", "FIREBASE_APP_ID", "\"${propiedad('FIREBASE_APP_ID', '1:519700348606:android:46096642949f978e9328ef')}\""
+        buildConfigField "String", "FIREBASE_DATABASE_URL", "\"${propiedad('FIREBASE_DATABASE_URL', 'https://sqliteemi-default-rtdb.firebaseio.com')}\""
+        buildConfigField "String", "FIREBASE_PROJECT_ID", "\"${propiedad('FIREBASE_PROJECT_ID', 'sqliteemi')}\""
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            optimization {
+                enable false
+            }
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation libs.appcompat
+    implementation libs.activity.ktx
+    implementation libs.constraintlayout
+    implementation libs.material
+    implementation libs.recyclerview
+
+    // Room: historial local (funciona sin internet)
+    implementation libs.room.runtime
+    annotationProcessor libs.room.compiler
+
+    // Firebase sin google-services.json: se inicializa en FrosterApp con BuildConfig
+    implementation platform("com.google.firebase:firebase-bom:33.2.0")
+    implementation "com.google.firebase:firebase-database"
+    implementation "com.google.firebase:firebase-auth"
+
+    testImplementation libs.junit
+}
