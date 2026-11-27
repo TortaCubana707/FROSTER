@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pantalla principal de FROSTER. Orden pensado para leerse de arriba abajo en un vistazo:
+  1) ¿llegan datos?  2) ¿hay alerta?  3) qué decidió el ESP32  4) lecturas  5) controles  6) historia.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/raiz"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -10,66 +15,274 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <TextView
-            android:id="@+id/txt_latido"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/sin_datos_esp32"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/txt_alerta"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@color/rojo"
-            android:padding="12dp"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <!-- Nivel -->
-        <TextView style="@style/Etiqueta" android:text="@string/nivel" />
-        <TextView android:id="@+id/txt_nivel" style="@style/Valor" />
-        <TextView android:id="@+id/txt_nivel_detalle" style="@style/Detalle" />
-        <TextView android:id="@+id/txt_motivo" style="@style/Detalle" />
-
-        <!-- Cámara -->
-        <TextView style="@style/Etiqueta" android:text="@string/camara" />
-        <TextView android:id="@+id/txt_camara" style="@style/Valor" />
-        <TextView android:id="@+id/txt_humedad" style="@style/Detalle" />
-
-        <!-- Bloque -->
-        <TextView style="@style/Etiqueta" android:text="@string/bloque" />
-        <TextView android:id="@+id/txt_bloque" style="@style/Valor" />
-        <TextView android:id="@+id/txt_fuga" style="@style/Detalle" />
-
-        <!-- Objetivo (umbral dinámico del Proyecto 1) -->
-        <TextView style="@style/Etiqueta" android:text="@string/objetivo" />
+        <!-- 1. Estado de la conexión -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/btn_menos"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="−" />
+            <TextView
+                android:id="@+id/txt_latido"
+                style="@style/Insignia"
+                android:text="@string/sin_datos_esp32" />
 
             <TextView
-                android:id="@+id/txt_objetivo"
-                style="@style/Valor"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:gravity="center" />
-
-            <Button
-                android:id="@+id/btn_mas"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="+" />
+                android:id="@+id/txt_conexion"
+                style="@style/Insignia"
+                android:layout_marginStart="8dp"
+                android:backgroundTint="@color/rojo"
+                android:text="@string/sin_conexion"
+                android:visibility="gone" />
         </LinearLayout>
+
+        <!-- 2. Alerta activa (visible solo si estado/alerta_id > 0) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_alerta"
+            style="@style/Tarjeta"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/rojo"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:contentDescription="@string/alerta_froster"
+                    android:src="@drawable/ic_alerta" />
+
+                <TextView
+                    android:id="@+id/txt_alerta"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:textColor="@color/blanco"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 3. Espejo del panel del administrador: mismas ventanas, mismo orden, solo para ver -->
+        <TextView
+            android:id="@+id/txt_espejo"
+            style="@style/Detalle"
+            android:layout_marginTop="10dp"
+            android:text="@string/espejo_nota"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:id="@+id/panel_espejo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Vista clásica (E3): se abre desde el menú -->
+        <LinearLayout
+            android:id="@+id/vista_clasica"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+        <!-- 3b. Lo que decidió el ESP32 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_nivel"
+            style="@style/Tarjeta"
+            app:strokeColor="@color/tenue"
+            app:strokeWidth="2dp">
+
+            <LinearLayout style="@style/ContenidoTarjeta">
+
+                <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/nivel" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:baselineAligned="true"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/txt_nivel"
+                        style="@style/Valor"
+                        android:textSize="44sp" />
+
+                    <TextView
+                        android:id="@+id/txt_nivel_detalle"
+                        style="@style/Detalle"
+                        android:layout_marginStart="12dp"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/txt_motivo"
+                    style="@style/Detalle" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView android:id="@+id/ind_celda_a" style="@style/Indicador" android:text="@string/celda_a" />
+                    <TextView android:id="@+id/ind_celda_b" style="@style/Indicador" android:text="@string/celda_b" />
+                    <TextView android:id="@+id/ind_bomba" style="@style/Indicador" android:text="@string/bomba" />
+                    <TextView
+                        android:id="@+id/ind_ventiladores"
+                        style="@style/Indicador"
+                        android:layout_marginEnd="0dp"
+                        android:text="@string/ventiladores" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 4. Lecturas: cámara y bloque frío lado a lado -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Tarjeta"
+                android:layout_width="0dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1">
+
+                <LinearLayout style="@style/ContenidoTarjeta">
+                    <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/camara" />
+                    <TextView android:id="@+id/txt_camara" style="@style/Valor" android:textSize="28sp" />
+                    <TextView android:id="@+id/txt_humedad" style="@style/Detalle" />
+                    <TextView android:id="@+id/txt_tendencia" style="@style/Detalle" android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Tarjeta"
+                android:layout_width="0dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1">
+
+                <LinearLayout style="@style/ContenidoTarjeta">
+                    <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/bloque" />
+                    <TextView android:id="@+id/txt_bloque" style="@style/Valor" android:textSize="28sp" />
+                    <TextView android:id="@+id/txt_rocio" style="@style/Detalle" />
+                    <TextView android:id="@+id/txt_fuga" style="@style/Detalle" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+
+        <!-- 5a. Objetivo (umbral dinámico del Proyecto 1) -->
+        <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
+
+            <LinearLayout style="@style/ContenidoTarjeta">
+                <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/objetivo" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_menos"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="64dp"
+                        android:layout_height="56dp"
+                        android:contentDescription="@string/bajar_objetivo"
+                        android:text="−"
+                        android:textSize="22sp" />
+
+                    <TextView
+                        android:id="@+id/txt_objetivo"
+                        style="@style/Valor"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:gravity="center" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_mas"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="64dp"
+                        android:layout_height="56dp"
+                        android:contentDescription="@string/subir_objetivo"
+                        android:text="+"
+                        android:textSize="22sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/txt_latencia"
+                    style="@style/Detalle"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/sin_comandos"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 5b. Modo: solo lectura. Cambiarlo es cosa del administrador (tablero web) -->
+        <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
+
+            <LinearLayout style="@style/ContenidoTarjeta">
+                <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/modo" />
+
+                <TextView
+                    android:id="@+id/txt_modo"
+                    style="@style/Valor"
+                    android:textSize="22sp" />
+
+                <TextView
+                    style="@style/Detalle"
+                    android:text="@string/modo_solo_admin"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 6a. Últimos eventos en vivo (froster/eventos) -->
+        <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
+
+            <LinearLayout style="@style/ContenidoTarjeta">
+                <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/ultimos_eventos" />
+
+                <TextView
+                    android:id="@+id/txt_sin_eventos"
+                    style="@style/Detalle"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/sin_eventos" />
+
+                <LinearLayout
+                    android:id="@+id/lista_eventos"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 6b. Datos del ESP32 (froster/dispositivo) -->
+        <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
+
+            <LinearLayout style="@style/ContenidoTarjeta">
+                <TextView style="@style/Etiqueta.Tarjeta" android:text="@string/esp32" />
+                <TextView
+                    android:id="@+id/txt_dispositivo"
+                    style="@style/Detalle"
+                    android:layout_marginTop="4dp"
+                    android:text="--" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_historial"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/ver_historial" />
     </LinearLayout>
 </ScrollView>

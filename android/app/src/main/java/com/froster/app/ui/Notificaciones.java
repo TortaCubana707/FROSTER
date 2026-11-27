@@ -20,7 +20,9 @@ public final class Notificaciones {
     private Notificaciones() { }
 
     public static final String CANAL_ALERTAS = "alertas";
+    public static final String CANAL_ESTADO = "estado";
     private static final int ID_ALERTA = 1;
+    private static final int ID_OFFLINE = 2;
 
     public static void crearCanal(Context contexto) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
@@ -28,7 +30,38 @@ public final class Notificaciones {
                 contexto.getString(R.string.canal_alertas), NotificationManager.IMPORTANCE_HIGH);
         canal.setDescription(contexto.getString(R.string.canal_alertas_desc));
         canal.enableVibration(true);
-        contexto.getSystemService(NotificationManager.class).createNotificationChannel(canal);
+        NotificationManager nm = contexto.getSystemService(NotificationManager.class);
+        nm.createNotificationChannel(canal);
+        // Modo offline: aviso visible pero sin la urgencia (ni el sonido de alarma) de una falla del prototipo
+        NotificationChannel estado = new NotificationChannel(CANAL_ESTADO,
+                contexto.getString(R.string.canal_estado), NotificationManager.IMPORTANCE_DEFAULT);
+        estado.setDescription(contexto.getString(R.string.canal_estado_desc));
+        nm.createNotificationChannel(estado);
+    }
+
+    /** Notificación de "Modo offline". Al tocarla abre el historial guardado en el teléfono. */
+    public static void modoOffline(Context contexto) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(contexto,
+                Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+        Intent abrir = new Intent(contexto, HistorialActivity.class);
+        PendingIntent pendiente = PendingIntent.getActivity(contexto, 1, abrir,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        NotificationCompat.Builder n = new NotificationCompat.Builder(contexto, CANAL_ESTADO)
+                .setSmallIcon(R.drawable.ic_alerta)
+                .setContentTitle(contexto.getString(R.string.modo_offline_titulo))
+                .setContentText(contexto.getString(R.string.modo_offline_texto))
+                .setStyle(new NotificationCompat.BigTextStyle()
+                        .bigText(contexto.getString(R.string.modo_offline_texto)))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setColor(ContextCompat.getColor(contexto, R.color.ambar))
+                .setContentIntent(pendiente)
+                .setOngoing(true);                       // se quita sola al volver la red
+        NotificationManagerCompat.from(contexto).notify(ID_OFFLINE, n.build());
+    }
+
+    public static void quitarModoOffline(Context contexto) {
+        NotificationManagerCompat.from(contexto).cancel(ID_OFFLINE);
     }
 
     public static void alerta(Context contexto, String titulo, String texto) {
@@ -43,6 +76,8 @@ public final class Notificaciones {
                 .setContentTitle(titulo)
                 .setContentText(texto)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setColor(ContextCompat.getColor(contexto, R.color.rojo))
                 .setDefaults(NotificationCompat.DEFAULT_ALL)     // sonido y vibración
                 .setContentIntent(pendiente)
                 .setAutoCancel(true);

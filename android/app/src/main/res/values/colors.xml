@@ -4,4 +4,14 @@
     <color name="ambar">#BF8700</color>
     <color name="rojo">#CF222E</color>
     <color name="tenue">#6E7781</color>
+    <color name="blanco">#FFFFFF</color>
+
+    <!-- Mismos colores que el LED RGB del prototipo: N1 verde, N2 cian, N3 azul -->
+    <color name="nivel1">#2DA44E</color>
+    <color name="nivel2">#1B9AAA</color>
+    <color name="nivel3">#1F6FEB</color>
+
+    <!-- Indicadores apagados: legibles en tema claro y oscuro -->
+    <color name="apagado_fondo">#D0D7DE</color>
+    <color name="apagado_texto">#424A53</color>
 </resources>
