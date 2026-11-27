@@ -93,7 +93,7 @@
 #define RUTA_ACK         RUTA_BASE "/ack"
 #define RUTA_DISPOSITIVO RUTA_BASE "/dispositivo"
 #define RUTA_EVENTOS     RUTA_BASE "/eventos"
-#define FIRMWARE_VERSION "2.0-e2"
+#define FIRMWARE_VERSION "2.1"
 
 /* --- Pines --- */
 #define DHTPIN       4
@@ -119,17 +119,19 @@
 
 /* Ventiladores con PWM. Comparten el D4184 #3 con la bomba; el ciclo de trabajo
    (0 a 255) sube con el nivel. El optoacoplador del D4184 (PC817) es lento:
-   arriba de unos 2 kHz ya no alcanza a seguir la senal. */
-#define PWM_VENT_HZ   1000
-#define PWM_VENT_N1   180      // 70 %: solo bomba y ventiladores
-#define PWM_VENT_N2   220      // 86 %: una celda
-#define PWM_VENT_N3   255      // 100 %: las dos celdas
+   arriba de unos 2 kHz ya no alcanza a seguir la senal.
+   v2.1: los tres ciclos y la frecuencia se ajustan desde el tablero (config/ajustes). */
+#define PWM_VENT_HZ   (gAj.pwmHz)
+#define PWM_VENT_N1   (gAj.pwmN1)   // 70 % de fabrica: solo bomba y ventiladores
+#define PWM_VENT_N2   (gAj.pwmN2)   // 86 %: una celda
+#define PWM_VENT_N3   (gAj.pwmN3)   // 100 %: las dos celdas
+#define PWM_MIN_CON_CELDA 50        // % minimo en manual si hay una celda encendida
 
 /* Calibracion: lo que se le suma a cada lectura. Se ajusta comparando contra un
    termometro de referencia (el DS18B20, en agua con hielo, debe marcar 0 C). */
-#define CAL_CAMARA_C   0.0f
-#define CAL_HUMEDAD    0.0f
-#define CAL_BLOQUE_C   0.0f
+#define CAL_CAMARA_C   (gAj.calCam)     // v2.1: ajustables desde el tablero
+#define CAL_HUMEDAD    (gAj.calHum)
+#define CAL_BLOQUE_C   (gAj.calBloque)
 
 #define WIFI_REINTENTO_MS 10000UL   // cada cuanto se reintenta la red si se cae
 
@@ -161,15 +163,30 @@ struct Nota { uint16_t hz, ms; };            // hz 0 = silencio; ms 0 = fin
 #include <math.h>
 #include <stdint.h>
 
-#define T_MIN_ENCENDIDA_MS  60000UL   // una celda no se apaga antes de esto
-#define T_MIN_APAGADA_MS    60000UL   // ni se enciende antes de esto
-#define T_CONFIRMA_MS       20000UL   // un cambio de nivel debe sostenerse 20 s
-#define T_PRECIRC_MS        15000UL   // agua circulando antes de dar corriente
-#define T_POSTCIRC_MS       60000UL   // y un rato despues de apagar
+/* v2.1 - AJUSTES EN VIVO. Lo que antes eran constantes ahora se cambia desde el
+   tablero (config/ajustes) sin volver a programar la placa. Los valores de
+   fabrica son los de siempre y cada uno tiene un rango seguro: lo que llegue
+   fuera de rango se ignora (ver aplicarAjuste en nube.ino). */
+struct Ajustes {
+  float    congelaAviso, congelaCorte, congelaRearme;   // C del bloque frio
+  float    fugaUmbral;                                  // % de humedad que cuenta como fuga
+  uint32_t tMinOnS, tMinOffS, tConfirmaS;               // segundos
+  uint32_t tPrecircS, tPostcircS;
+  uint8_t  pwmN1, pwmN2, pwmN3;                         // 0 a 255 por nivel
+  uint32_t pwmHz;                                       // 100 a 2000
+  float    calCam, calHum, calBloque;                   // se suman a cada lectura
+};
+Ajustes gAj = { 2.0f, 0.5f, 6.0f, 40.0f, 60, 60, 20, 15, 60, 180, 220, 255, 1000, 0.0f, 0.0f, 0.0f };
+
+#define T_MIN_ENCENDIDA_MS  (gAj.tMinOnS * 1000UL)   // una celda no se apaga antes de esto
+#define T_MIN_APAGADA_MS    (gAj.tMinOffS * 1000UL)   // ni se enciende antes de esto
+#define T_CONFIRMA_MS       (gAj.tConfirmaS * 1000UL)   // un cambio de nivel debe sostenerse 20 s
+#define T_PRECIRC_MS        (gAj.tPrecircS * 1000UL)   // agua circulando antes de dar corriente
+#define T_POSTCIRC_MS       (gAj.tPostcircS * 1000UL)   // y un rato despues de apagar
 #define HORIZONTE_MIN       2.0f      // la prediccion mira 2 min adelante
-#define CONGELA_AVISO_C     2.0f      // bloque frio: no subir de nivel
-#define CONGELA_CORTE_C     0.5f      // bloque frio: celdas fuera
-#define CONGELA_REARME_C    6.0f      // y no vuelven hasta calentar a esto
+#define CONGELA_AVISO_C     (gAj.congelaAviso)      // bloque frio: no subir de nivel
+#define CONGELA_CORTE_C     (gAj.congelaCorte)      // bloque frio: celdas fuera
+#define CONGELA_REARME_C    (gAj.congelaRearme)      // y no vuelven hasta calentar a esto
 #define AGUA_AVISO_C       26.0f      // waterblock: prohibido el nivel 3
 #define AGUA_CORTE_C       30.0f      // waterblock: celdas fuera
 #define AGUA_REARME_C      24.0f      // vuelven al bajar a esto (o menos)
@@ -184,7 +201,7 @@ struct Nota { uint16_t hz, ms; };            // hz 0 = silencio; ms 0 = fin
 /* Fuga: humedad junto a la bomba. Se lee cada 50 ms y basta con 0.3 s seguidos de
    lecturas mojadas para cortar: la bomba saca mucha agua de golpe. Se suelta tras 30 s
    ya seca, para que un sensor que se va secando no prenda y apague la bomba una y otra vez. */
-#define FUGA_UMBRAL_PCT    40.0f
+#define FUGA_UMBRAL_PCT    (gAj.fugaUmbral)
 #define FUGA_HISTERESIS    10.0f
 #define FUGA_CONFIRMA_MS     300UL
 #define FUGA_LIBERA_MS     30000UL
@@ -500,6 +517,18 @@ int   gFugaRaw = -1;                  // lectura cruda del ADC, para calibrar (-
 uint32_t gMsOnA = 0, gMsOnB = 0;      // tiempo encendida de cada celda (para la LCD)
 Control  ctl;      // solo lo toca la tarea de control
 
+/* v2.1 - control remoto extra (lo escribe el stream de config/, lo lee el control) */
+volatile bool    gPwmAuto = true;     // false = la bomba y los ventiladores van a gPwmPct
+volatile uint8_t gPwmPct  = 70;       // 20 a 100 %
+volatile bool    gSilencio = false;   // buzzer callado (las pruebas suenan igual)
+volatile bool    gResetHoras = false; // pedido de poner en cero las horas de las celdas
+volatile bool    gCambioHz = false;   // la frecuencia del PWM cambio: la aplica el control
+enum Prueba : uint8_t { P_NINGUNA = 0, P_BOMBA, P_CELDA_A, P_CELDA_B, P_BUZZER, P_LED };
+const char *PRUEBAS[] = { "", "bomba", "celda_a", "celda_b", "buzzer", "led" };
+volatile uint8_t  gPrueba = P_NINGUNA;
+volatile uint32_t gPruebaHasta = 0;
+String gPruebaResultado = "";         // lo ultimo que dijo una prueba (para el tablero)
+
 const char *MOTIVOS[] = { "Reposo", "Pre-circulando", "Subida rapida", "Sobre objetivo",
                           "Bajo objetivo", "Espera 60 s", "Congelamiento", "Sin hielo/bomba",
                           "Falla sensor", "Manual", "Apagado", "Carga alta", "Fuga de agua" };
@@ -552,6 +581,7 @@ void setup() {
   lcd.setCursor(0, 0); lcd.print("FROSTER");
   lcd.setCursor(0, 1); lcd.print("Iniciando...");
   iniciarOled();
+  cargarHoras();                                 // v2.1: las horas de uso sobreviven al reinicio
 
 
   /* El control arranca ANTES de buscar el WiFi: con o sin internet ya esta
@@ -561,6 +591,16 @@ void setup() {
   /* WiFiManager sin bloquear: si no conoce la red, abre el punto de acceso
      "ESP32_Emilio" y el resto del programa sigue trabajando. */
   WiFi.setAutoReconnect(true);
+#ifdef WIFI_SSID
+  /* Red fija (secretos.h): si WIFI_SSID tiene nombre, se intenta primero. Sirve para redes
+     abiertas como la del laboratorio (WIFI_PASS vacio). Queda guardada y autoConnect la usa;
+     si no conecta en 20 s, se abre el portal de WiFiManager como siempre. */
+  if (strlen(WIFI_SSID) > 0) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.printf("Conectando a la red fija \"%s\"%s...\n", WIFI_SSID, strlen(WIFI_PASS) ? "" : " (abierta)");
+  }
+#endif
   wm.setConfigPortalBlocking(false);
   wm.setConnectTimeout(20);
   if (wm.autoConnect("ESP32_Emilio")) {

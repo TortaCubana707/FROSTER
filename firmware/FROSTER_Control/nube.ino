@@ -6,7 +6,14 @@
  *   estado/       lo que hace el sistema: nivel, salidas, modo, motivo, alerta
  *   config/       lo que piden la app y el tablero (el ESP32 solo lo lee)
  *   ack/          confirmacion de cada comando que trae cmd_id (para medir latencia)
- *   dispositivo/  red y conexion: ip, rssi, caidas, firmware, ultima conexion
+ *   dispositivo/  red y placa: ip, rssi, caidas, firmware, memoria, temperatura del chip
+ *
+ * v2.1 - config/ trae ademas:
+ *   pwm_auto, pwm_pct     bomba y ventiladores por nivel (auto) o fijos en un % (manual)
+ *   silencio              buzzer callado
+ *   ajustes/{...}         umbrales, tiempos, PWM por nivel, frecuencia y calibracion
+ *   accion + accion_id    orden de una sola vez: reiniciar, reset_horas, reset_caidas,
+ *                         probar_bomba, probar_celda_a, probar_celda_b, probar_buzzer, probar_led
  *   eventos/      bitacora: cambios de nivel, alertas y picos de temperatura
  *
  * Trafico: los comandos llegan por un stream (al instante, sin preguntar cada
@@ -77,6 +84,10 @@ void iniciarFirebase() {
  * el loop, nunca el callback.
  * ------------------------------------------------------------------------- */
 static volatile bool crearConfigInicial = false;
+static volatile bool primerSnapshot = true;    // el primer config/ completo no ejecuta acciones viejas
+static double ultimaAccionId = 0;              // acciones ya atendidas (o viejas)
+static String accionPendiente = "";            // la ejecuta el loop, nunca el callback
+static volatile bool hayAccion = false;
 static volatile double ackPendiente = 0;       // cmd_id por confirmar (0 = nada)
 static volatile uint32_t tUltimoComando = 0;   // millis() al recibirlo, para medir el atraso local
 static double idUsb = 0;                       // cmd_id del ultimo comando escrito por USB
@@ -101,6 +112,55 @@ static void aplicarOrden(Entradas &n, const String &clave, float num, bool bit, 
   else if (clave == "carga_alta") n.cargaAlta = bit;
 }
 
+/* v2.1 - un ajuste fino. Fuera de rango no se obedece. Los tres umbrales del bloque
+   frio se revisan juntos: corte < aviso < rearme, o se deshace el cambio. */
+static void aplicarAjuste(const String &k, float v) {
+  if (isnan(v)) return;
+  Ajustes a = gAj;
+  auto en = [&](float lo, float hi) { return v >= lo && v <= hi; };
+  if      (k == "congela_aviso"  && en(0.5f, 8.0f))   a.congelaAviso = v;
+  else if (k == "congela_corte"  && en(-2.0f, 4.0f))  a.congelaCorte = v;
+  else if (k == "congela_rearme" && en(2.0f, 15.0f))  a.congelaRearme = v;
+  else if (k == "fuga_umbral"    && en(10.0f, 90.0f)) a.fugaUmbral = v;
+  else if (k == "t_min_on_s"     && en(30, 600))      a.tMinOnS = (uint32_t)v;
+  else if (k == "t_min_off_s"    && en(30, 600))      a.tMinOffS = (uint32_t)v;
+  else if (k == "t_confirma_s"   && en(5, 120))       a.tConfirmaS = (uint32_t)v;
+  else if (k == "t_precirc_s"    && en(5, 120))       a.tPrecircS = (uint32_t)v;
+  else if (k == "t_postcirc_s"   && en(10, 600))      a.tPostcircS = (uint32_t)v;
+  else if (k == "pwm_n1"         && en(20, 100))      a.pwmN1 = (uint8_t)lroundf(v * 2.55f);
+  else if (k == "pwm_n2"         && en(20, 100))      a.pwmN2 = (uint8_t)lroundf(v * 2.55f);
+  else if (k == "pwm_n3"         && en(20, 100))      a.pwmN3 = (uint8_t)lroundf(v * 2.55f);
+  else if (k == "pwm_hz"         && en(100, 2000))  { a.pwmHz = (uint32_t)v; }
+  else if (k == "cal_camara"     && en(-5.0f, 5.0f))   a.calCam = v;
+  else if (k == "cal_humedad"    && en(-15.0f, 15.0f)) a.calHum = v;
+  else if (k == "cal_bloque"     && en(-5.0f, 5.0f))   a.calBloque = v;
+  else return;
+  if (!(a.congelaCorte < a.congelaAviso && a.congelaAviso < a.congelaRearme)) return;
+  const bool hz = a.pwmHz != gAj.pwmHz;
+  portENTER_CRITICAL(&mux);
+  gAj = a;
+  portEXIT_CRITICAL(&mux);
+  if (hz) gCambioHz = true;
+}
+
+static const char *CLAVES_AJUSTE[] = { "congela_aviso", "congela_corte", "congela_rearme", "fuga_umbral",
+  "t_min_on_s", "t_min_off_s", "t_confirma_s", "t_precirc_s", "t_postcirc_s",
+  "pwm_n1", "pwm_n2", "pwm_n3", "pwm_hz", "cal_camara", "cal_humedad", "cal_bloque" };
+
+static void aplicarExtra(const String &clave, float num, bool bit) {
+  if (clave == "pwm_auto") gPwmAuto = bit;
+  else if (clave == "pwm_pct" && !isnan(num) && num >= 20.0f && num <= 100.0f) gPwmPct = (uint8_t)num;
+  else if (clave == "silencio") gSilencio = bit;     // senales.ino corta lo que este sonando
+}
+
+static void recibirAccion(const String &accion, double id) {
+  if (id <= ultimaAccionId) return;
+  ultimaAccionId = id;
+  if (primerSnapshot) return;                  // vieja: ya estaba en config/ al arrancar
+  accionPendiente = accion;
+  hayAccion = true;
+}
+
 static void guardarOrdenes(const Entradas &n) {
   portENTER_CRITICAL(&mux);
   gOrdenes.setpoint = n.setpoint; gOrdenes.modo = n.modo;
@@ -123,17 +183,33 @@ void alRecibirConfig(StreamData datos) {
   if (datos.dataTypeEnum() == firebase_rtdb_data_type_json) {
     FirebaseJson &j = datos.jsonObject();
     FirebaseJsonData r;
-    const char *claves[] = { "setpoint", "modo", "manual_a", "manual_b", "carga_alta" };
-    for (const char *c : claves) {
-      if (!j.get(r, c) || !r.success) continue;
-      aplicarOrden(n, c, r.type == "string" ? NAN : r.to<float>(), r.to<bool>(), r.to<String>());
+    if (ruta == "/ajustes") {                    // llego el objeto ajustes completo
+      for (const char *c : CLAVES_AJUSTE) if (j.get(r, c) && r.success) aplicarAjuste(c, r.to<float>());
+    } else {
+      const char *claves[] = { "setpoint", "modo", "manual_a", "manual_b", "carga_alta" };
+      for (const char *c : claves) {
+        if (!j.get(r, c) || !r.success) continue;
+        aplicarOrden(n, c, r.type == "string" ? NAN : r.to<float>(), r.to<bool>(), r.to<String>());
+      }
+      const char *extras[] = { "pwm_auto", "pwm_pct", "silencio" };
+      for (const char *c : extras) if (j.get(r, c) && r.success) aplicarExtra(c, r.to<float>(), r.to<bool>());
+      for (const char *c : CLAVES_AJUSTE) {
+        if (j.get(r, String("ajustes/") + c) && r.success) aplicarAjuste(c, r.to<float>());
+      }
+      if (j.get(r, "cmd_id") && r.success) cmd = r.to<double>();
+      FirebaseJsonData ra;
+      if (j.get(r, "accion_id") && r.success && j.get(ra, "accion") && ra.success)
+        recibirAccion(ra.to<String>(), r.to<double>());
     }
-    if (j.get(r, "cmd_id") && r.success) cmd = r.to<double>();
   } else {
     const String clave = ruta.substring(1);
     if (clave == "cmd_id") cmd = numeroDe(datos) > 0 ? datos.doubleData() : 0;
+    else if (clave.startsWith("ajustes/")) aplicarAjuste(clave.substring(8), numeroDe(datos));
+    else if (clave == "pwm_auto" || clave == "pwm_pct" || clave == "silencio")
+      aplicarExtra(clave, numeroDe(datos), datos.boolData());
     else aplicarOrden(n, clave, numeroDe(datos), datos.boolData(), datos.stringData());
   }
+  primerSnapshot = false;
   guardarOrdenes(n);
   if (cmd > 0) { tUltimoComando = millis(); ackPendiente = cmd; }
 }
@@ -223,7 +299,7 @@ struct Lectura { const char *clave; float umbral; float enviado; };
 static Lectura lecturas[] = {
   { "ambiente", 0.2f, NAN }, { "humedad", 1.0f, NAN }, { "punto_rocio", 0.3f, NAN },
   { "placa_fria", 0.2f, NAN }, { "fuga_pct", 2.0f, NAN }, { "pendiente", 0.05f, NAN },
-  { "prediccion", 0.2f, NAN },
+  { "prediccion", 0.2f, NAN }, { "fuga_raw", 40.0f, NAN },
 };
 static const size_t N_LECTURAS = sizeof(lecturas) / sizeof(lecturas[0]);
 
@@ -252,16 +328,18 @@ static void evento(const char *tipo, const String &texto, uint8_t nivel, float c
 }
 
 static void publicar() {
-  Salidas s; Entradas o; float cam, tubo, hum, rocio, fuga;
+  Salidas s; Entradas o; float cam, tubo, hum, rocio, fuga; uint32_t msA, msB; Ajustes aj;
   portENTER_CRITICAL(&mux);
   s = gSalidas; o = gOrdenes;
   cam = gCam; tubo = gTubo; hum = gHum; rocio = gRocio; fuga = gFugaPct;
+  msA = gMsOnA; msB = gMsOnB; aj = gAj;
   portEXIT_CRITICAL(&mux);
   const uint32_t ahora = millis();
 
   // ---- lecturas: solo si alguna cambio de verdad, o en el latido
   static uint32_t tLecturas = 0;
-  const float valores[N_LECTURAS] = { cam, hum, rocio, tubo, fuga, s.pendiente, s.prediccion };
+  const float valores[N_LECTURAS] = { cam, hum, rocio, tubo, fuga, s.pendiente, s.prediccion,
+                                      gFugaRaw < 0 ? NAN : (float)gFugaRaw };
   bool cambio = tLecturas == 0 || (ahora - tLecturas) >= LATIDO_MS;
   for (size_t i = 0; i < N_LECTURAS; i++) {
     const float v = valores[i], e = lecturas[i].enviado;
@@ -292,6 +370,36 @@ static void publicar() {
   st.set("alerta_id",  (int)s.alerta);
   st.set("condensa",   (!isnan(tubo) && !isnan(rocio)) ? (tubo < rocio) : false);
   st.set("carga_alta", o.cargaAlta);
+  // v2.1: todo lo necesario para encontrar fallas sin abrir el gabinete
+  st.set("pwm_auto",   (bool)gPwmAuto);
+  st.set("pwm_pct_manual", (int)gPwmPct);
+  st.set("pwm_hz",     (int)aj.pwmHz);
+  st.set("silencio",   (bool)gSilencio);
+  st.set("fallas",     (int)s.fallas);       // bit0 camara, bit1 bloque frio, bit2 agua
+  st.set("congelado",  s.congelado);
+  st.set("sin_hielo",  s.sinHielo);
+  st.set("esperando",  s.esperando);
+  st.set("fuga",       (bool)gFuga);
+  st.set("horas_a",    roundf(msA / 360000.0f) / 10.0f);
+  st.set("horas_b",    roundf(msB / 360000.0f) / 10.0f);
+  st.set("prueba",     PRUEBAS[gPrueba]);
+  st.set("prueba_resultado", gPruebaResultado);
+  st.set("ajustes/congela_aviso",  aj.congelaAviso);
+  st.set("ajustes/congela_corte",  aj.congelaCorte);
+  st.set("ajustes/congela_rearme", aj.congelaRearme);
+  st.set("ajustes/fuga_umbral",    aj.fugaUmbral);
+  st.set("ajustes/t_min_on_s",     (int)aj.tMinOnS);
+  st.set("ajustes/t_min_off_s",    (int)aj.tMinOffS);
+  st.set("ajustes/t_confirma_s",   (int)aj.tConfirmaS);
+  st.set("ajustes/t_precirc_s",    (int)aj.tPrecircS);
+  st.set("ajustes/t_postcirc_s",   (int)aj.tPostcircS);
+  st.set("ajustes/pwm_n1", (int)lroundf(aj.pwmN1 / 2.55f));
+  st.set("ajustes/pwm_n2", (int)lroundf(aj.pwmN2 / 2.55f));
+  st.set("ajustes/pwm_n3", (int)lroundf(aj.pwmN3 / 2.55f));
+  st.set("ajustes/pwm_hz", (int)aj.pwmHz);
+  st.set("ajustes/cal_camara",  aj.calCam);
+  st.set("ajustes/cal_humedad", aj.calHum);
+  st.set("ajustes/cal_bloque",  aj.calBloque);
   String firma;
   st.toString(firma);
   static String firmaEnviada;
@@ -313,6 +421,20 @@ static void publicar() {
     d.set("rssi", (int)WiFi.RSSI());
     d.set("caidas_wifi", (int)gCaidasWiFi);
     d.set("firmware", FIRMWARE_VERSION);
+    d.set("ssid", WiFi.SSID());
+    d.set("canal", (int)WiFi.channel());
+    d.set("mac", WiFi.macAddress());
+    d.set("heap_libre_kb", (int)(ESP.getFreeHeap() / 1024));
+    d.set("heap_min_kb", (int)(ESP.getMinFreeHeap() / 1024));
+    d.set("temp_chip", roundf(temperatureRead() * 10.0f) / 10.0f);
+    d.set("cpu_mhz", (int)ESP.getCpuFreqMHz());
+    d.set("sketch_kb", (int)(ESP.getSketchSize() / 1024));
+    d.set("sketch_libre_kb", (int)(ESP.getFreeSketchSpace() / 1024));
+    d.set("uptime_s", (int)(ahora / 1000));
+    static const char *RAZONES[] = { "desconocido", "encendido", "externo", "software", "panico",
+                                     "watchdog int", "watchdog tarea", "watchdog", "sueno", "voltaje bajo", "sdio" };
+    const int rr = (int)esp_reset_reason();
+    d.set("ultimo_reinicio", rr >= 0 && rr <= 10 ? RAZONES[rr] : "otro");
     d.set("ultima_conexion/.sv", "timestamp");
     if (subir(RUTA_DISPOSITIVO, d)) { tDisp = ahora; caidasEnviadas = gCaidasWiFi; }
   }
@@ -359,6 +481,37 @@ void atenderNube() {
     }
   }
 
+  // 1b. v2.1: acciones de una sola vez pedidas desde el tablero
+  if (hayAccion) {
+    hayAccion = false;
+    const String a = accionPendiente;
+    gPruebaResultado = "";
+    if (a == "reiniciar") {
+      evento("sistema", "Reinicio remoto pedido desde el tablero", gSalidas.nivel, gCam, gOrdenes.setpoint);
+      Serial.println(">>> Reinicio remoto en 1 s");
+      FirebaseJson st; st.set("prueba_resultado", "Reiniciando..."); subir(RUTA_ESTADO, st);
+      delay(1000);                               // unico delay: la placa se va a reiniciar
+      ESP.restart();
+    } else if (a == "reset_horas") {
+      gResetHoras = true; gPruebaResultado = "Horas de las celdas en cero";
+    } else if (a == "reset_caidas") {
+      gCaidasWiFi = 0; gPruebaResultado = "Contador de caidas WiFi en cero";
+    } else if (a.startsWith("probar_")) {
+      const String p = a.substring(7);
+      uint8_t t = P_NINGUNA; uint32_t dur = 5000;
+      if (p == "bomba") t = P_BOMBA;
+      else if (p == "celda_a") { t = P_CELDA_A; dur = 10000; }
+      else if (p == "celda_b") { t = P_CELDA_B; dur = 10000; }
+      else if (p == "buzzer") { t = P_BUZZER; dur = 2000; }   // senales.ino la toca al ver gPrueba
+      else if (p == "led") { t = P_LED; dur = 4000; }
+      if (t != P_NINGUNA) { gPruebaHasta = millis() + dur; gPrueba = t; }
+    }
+    if (a.length()) {
+      Serial.printf(">>> Accion remota: %s\n", a.c_str());
+      evento("sistema", String("Accion: ") + a, gSalidas.nivel, gCam, gOrdenes.setpoint);
+    }
+  }
+
   // 2. config/ no existia: crear los valores de fabrica
   if (crearConfigInicial) {
     crearConfigInicial = false;
@@ -368,6 +521,9 @@ void atenderNube() {
     ini.set("manual_a", false);
     ini.set("manual_b", false);
     ini.set("carga_alta", false);
+    ini.set("pwm_auto", true);
+    ini.set("pwm_pct", 70);
+    ini.set("silencio", false);
     subir(RUTA_CONFIG, ini);
   }
 
